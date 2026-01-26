@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Application</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f8;
+        }
+        .box {
+            width: 400px;
+            margin: 50px auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px #ccc;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2>Create Application</h2>
+
+    <form method="POST" action="/create-application">
+
+        <input type="text" name="full_name" placeholder="Full Name" required>
+
+        <input type="number" name="age" placeholder="Age" required>
+
+        <select name="scheme" required>
+            <option value="">-- Select Plan --</option>
+            <option value="SNAP">SNAP</option>
+            <option value="CCAP">CCAP</option>
+            <option value="Medicaid">Medicaid</option>
+            <option value="Medicare">Medicare</option>
+            <option value="QHP">QHP</option>
+        </select>
+
+        <input type="number" name="income" placeholder="Annual Income" required>
+
+        <input type="number" name="children" placeholder="No of Children" value="0">
+
+        <button type="submit">Submit Application</button>
+
+    </form>
+</div>
+
+</body>
+</html>

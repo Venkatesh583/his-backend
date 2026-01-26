@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Application List</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f9;
+        }
+        table {
+            width: 80%;
+            margin: 40px auto;
+            border-collapse: collapse;
+            background: white;
+        }
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        th {
+            background: #9b59b6;
+            color: white;
+        }
+        h2 {
+            text-align: center;
+            margin-top: 30px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div style="color: green; font-weight: bold;">
+        {{ message }}
+        <a href="/data-collection/{{ app[0] }}" class="btn btn-warning">
+    Collect Data
+</a>
+
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+
+<h2>Application List</h2>
+<th>Status</th>
+
+<table>
+    <tr>
+        <th>Name</th>
+<th>Age</th>
+<th>Scheme</th>
+<th>Income</th>
+<th>Children</th>
+<th>Status</th>
+
+
+    </tr>
+
+    {% for app in applications %}
+    <tr>
+        <td>{{ app[1] }}</td>
+        <td>{{ app[2] }}</td>
+        <td>{{ app[3] }}</td>
+        <td>{{ app[4] }}</td>
+        <td>{{ app[5] }}</td>
+        <td>{{ app[7] }}</td>
+
+
+    </tr>
+    {% endfor %}
+</table>
+
+</body>
+</html>

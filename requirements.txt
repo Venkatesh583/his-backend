@@ -1,0 +1,10 @@
+<<<<<<< HEAD
+flask==3.0.0
+gunicorn==21.2.0
+reportlab==4.0.8
+
+=======
+flask
+gunicorn
+reportlab
+>>>>>>> 613e80f (Initial Flask HIS backend)
