@@ -93,13 +93,21 @@ def init_admin_tables():
     except Exception as e:
         print(f"[ERROR] Failed to initialize admin tables: {e}")
 
+
 # ================= LOGIN =================
 @app.route("/", methods=["GET","POST"])
 def login_page():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
-
+        
+        # HARDCODED DEFAULT LOGINS (for testing)
+        if username == "caseworker" and password == "1234":
+            return redirect("/dashboard")
+        if username == "admin" and password == "admin123":
+            return redirect("/admin-dashboard")
+        
+        # Database check (fallback)
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT role FROM users WHERE username=? AND password=?", (username,password))
