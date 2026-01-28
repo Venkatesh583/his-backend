@@ -302,3 +302,8 @@ with app.app_context():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=True)
+
+    # Add this route AFTER the existing /applications route
+@app.route("/application-list")
+def application_list_redirect():
+    return redirect("/applications")
