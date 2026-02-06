@@ -1,15 +1,68 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Admin Dashboard</title>
+    <title>Health Insurance Admin</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .menu {
+            margin: 30px 0;
+        }
+        .menu-item {
+            display: block;
+            background: #3498db;
+            color: white;
+            padding: 15px;
+            margin: 10px 0;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 18px;
+        }
+        .menu-item:hover {
+            background: #2980b9;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #666;
+        }
+    </style>
 </head>
 <body>
-    <h1>Admin Dashboard</h1>
-
-    <ul>
-        <li><a href="/applications">View Applications</a></li>
-        <li><a href="/debug-db">Debug DB</a></li>
-        <li><a href="/">Logout</a></li>
-    </ul>
+    <div class="container">
+        <h1>🏥 Health Insurance System - Admin Panel</h1>
+        <p>Welcome to the administrator dashboard</p>
+        
+        <div class="menu">
+            <a href="/applications" class="menu-item">📋 Manage Applications</a>
+            <a href="/caseworker/dashboard" class="menu-item">👨‍💼 Caseworker Panel</a>
+            <a href="/create-application" class="menu-item">➕ Create New Application</a>
+            <a href="/debug-db" class="menu-item">🔧 System Diagnostics</a>
+            <a href="/" class="menu-item" style="background: #e74c3c;">🚪 Logout</a>
+        </div>
+        
+        <div class="footer">
+            <p>Government of India - Health Insurance Scheme Management</p>
+            <p>System Status: <a href="/health">✅ Operational</a></p>
+        </div>
+    </div>
 </body>
 </html>
