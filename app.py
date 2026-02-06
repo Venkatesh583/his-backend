@@ -276,3 +276,17 @@ init_db()
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=True)
+
+    # Add to your existing app.py (around line 60)
+
+@app.route("/admin/dashboard")
+def admin_dashboard():
+    return render_template("admin-dashboard.html")
+
+@app.route("/caseworker/dashboard")
+def caseworker_dashboard():
+    return render_template("dashboard.html")
+
+@app.route("/public/register")
+def public_register():
+    return render_template("application-create.html")
