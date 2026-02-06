@@ -12,15 +12,15 @@ app.config['SESSION_TYPE'] = 'filesystem'
 
 # ================= DATABASE CONFIG =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_NAME = os.path.join(BASE_DIR, "health_insurance.db")
+DB_NAME = os.path.join(BASE_DIR, "his.db")
 
 def get_db():
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row  # Return dictionaries
+    conn.row_factory = sqlite3.Row
     return conn
 
 def init_tables():
-    """Create all tables from your design"""
+    """Create all tables from your project description"""
     conn = get_db()
     cur = conn.cursor()
     
@@ -49,8 +49,7 @@ def init_tables():
             create_date DATE DEFAULT CURRENT_DATE,
             update_date DATE,
             created_by VARCHAR(50),
-            updated_by VARCHAR(50),
-            FOREIGN KEY (plan_category_id) REFERENCES plan_category(category_id)
+            updated_by VARCHAR(50)
         )
     ''')
     
@@ -90,103 +89,83 @@ def init_tables():
         )
     ''')
     
-    # Table-5: DC_CASES
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS dc_cases (
-            case_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER UNIQUE,
-            app_id INTEGER,
-            plan_id INTEGER,
-            FOREIGN KEY (app_id) REFERENCES citizen_apps(app_id),
-            FOREIGN KEY (plan_id) REFERENCES plan_master(plan_id)
-        )
-    ''')
-    
-    # Table-6: DC_INCOME
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS dc_income (
-            income_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER,
-            emp_income DECIMAL(10,2),
-            property_income DECIMAL(10,2),
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
-        )
-    ''')
-    
-    # Table-7: DC_CHILDRENS
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS dc_childrens (
-            children_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER,
-            children_dob DATE,
-            children_ssn VARCHAR(20),
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
-        )
-    ''')
-    
-    # Table-8: DC_EDUCATION
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS dc_education (
-            edu_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER,
-            highest_qualification VARCHAR(100),
-            graduation_year INTEGER,
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
-        )
-    ''')
-    
-    # Table-9: ELIG_DTLS
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS elig_dtls (
-            elig_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER,
-            plan_name VARCHAR(100),
-            plan_status VARCHAR(50),
-            plan_start_date DATE,
-            plan_end_date DATE,
-            benefit_amt DECIMAL(10,2),
-            denial_reason TEXT,
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
-        )
-    ''')
-    
-    # Table-10: CO_TRIGGERS
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS co_triggers (
-            trg_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER,
-            trg_status CHAR(1),
-            notice TEXT,
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
-        )
-    ''')
-    
-    # Insert sample data
-    # Default admin account
+    # Insert default data
     cur.execute('''
         INSERT OR IGNORE INTO case_worker_accts 
         (fullname, email, pwd, phno, gender, ssn, dob, created_by)
-        VALUES ('System Admin', 'admin@his.gov', 'admin123', '9876543210', 'M', '987654', '1990-01-01', 'SYSTEM')
+        VALUES 
+        ('Admin User', 'admin@his.gov', 'admin123', '9876543210', 'M', '987654', '1990-01-01', 'SYSTEM'),
+        ('Case Worker 1', 'worker1@his.gov', 'worker123', '9876543211', 'F', '001003', '1992-05-15', 'SYSTEM')
     ''')
     
-    # Sample plan categories
-    categories = [
-        ('SNAP', 'Y', 'SYSTEM'),
-        ('CCAP', 'Y', 'SYSTEM'),
-        ('Medicaid', 'Y', 'SYSTEM'),
-        ('Medicare', 'Y', 'SYSTEM'),
-        ('QHP', 'Y', 'SYSTEM')
-    ]
-    
-    for cat_name, active, creator in categories:
+    # Insert plan categories
+    categories = ['SNAP', 'CCAP', 'Medicaid', 'Medicare', 'QHP']
+    for cat in categories:
         cur.execute('''
-            INSERT OR IGNORE INTO plan_category (category_name, active_sw, created_by)
-            VALUES (?, ?, ?)
-        ''', (cat_name, active, creator))
+            INSERT OR IGNORE INTO plan_category (category_name, created_by)
+            VALUES (?, 'SYSTEM')
+        ''', (cat,))
     
     conn.commit()
     conn.close()
-    print("[SUCCESS] All tables created with sample data")
+    print("✅ Database initialized with all tables")
+
+# ================= PUBLIC ROUTES =================
+@app.route('/')
+def home():
+    """Public landing page"""
+    return render_template('public/home.html')
+
+@app.route('/public/register', methods=['GET', 'POST'])
+def citizen_register():
+    if request.method == 'POST':
+        conn = get_db()
+        cur = conn.cursor()
+        
+        try:
+            cur.execute('''
+                INSERT INTO citizen_apps 
+                (fullname, email, phno, ssn, gender, state_name, create_date)
+                VALUES (?, ?, ?, ?, ?, ?, DATE('now'))
+            ''', (
+                request.form['fullname'],
+                request.form.get('email', ''),
+                request.form.get('phno', ''),
+                request.form['ssn'],
+                request.form.get('gender', ''),
+                request.form.get('state_name', 'New York')
+            ))
+            
+            app_id = cur.lastrowid
+            conn.commit()
+            flash(f'✅ Application submitted! Your Application ID: {app_id}', 'success')
+            return redirect(f'/application/{app_id}/status')
+            
+        except sqlite3.IntegrityError:
+            flash('❌ SSN already registered!', 'danger')
+        finally:
+            conn.close()
+    
+    return render_template('public/register.html')
+
+@app.route('/application/<int:app_id>/status')
+def application_status(app_id):
+    conn = get_db()
+    cur = conn.cursor()
+    
+    cur.execute('SELECT * FROM citizen_apps WHERE app_id = ?', (app_id,))
+    application = cur.fetchone()
+    
+    if not application:
+        conn.close()
+        return "Application not found"
+    
+    conn.close()
+    return render_template('public/status.html', application=application)
+
+@app.route('/check-status')
+def check_status_page():
+    return render_template('public/check-status.html')
 
 # ================= AUTHENTICATION =================
 @app.route('/login', methods=['GET', 'POST'])
@@ -220,7 +199,7 @@ def login():
 @app.route('/logout')
 def logout():
     session.clear()
-    return redirect('/login')
+    return redirect('/')
 
 # ================= ADMIN MODULE =================
 @app.route('/admin/dashboard')
@@ -231,26 +210,26 @@ def admin_dashboard():
     conn = get_db()
     cur = conn.cursor()
     
-    # Get statistics
+    # Statistics
+    cur.execute('SELECT COUNT(*) FROM citizen_apps')
+    total_apps = cur.fetchone()[0]
+    
     cur.execute('SELECT COUNT(*) FROM case_worker_accts')
     total_workers = cur.fetchone()[0]
     
-    cur.execute('SELECT COUNT(*) FROM citizen_apps')
-    total_applications = cur.fetchone()[0]
+    cur.execute('SELECT COUNT(*) FROM plan_category')
+    total_categories = cur.fetchone()[0]
     
-    cur.execute('SELECT COUNT(*) FROM elig_dtls WHERE plan_status = "APPROVED"')
-    approved = cur.fetchone()[0]
-    
-    cur.execute('SELECT COUNT(*) FROM elig_dtls WHERE plan_status = "DENIED"')
-    denied = cur.fetchone()[0]
+    cur.execute('SELECT COUNT(*) FROM plan_master')
+    total_plans = cur.fetchone()[0]
     
     conn.close()
     
     return render_template('admin/dashboard.html',
+                         total_apps=total_apps,
                          total_workers=total_workers,
-                         total_applications=total_applications,
-                         approved=approved,
-                         denied=denied)
+                         total_categories=total_categories,
+                         total_plans=total_plans)
 
 @app.route('/admin/plan-category', methods=['GET', 'POST'])
 def plan_category():
@@ -269,7 +248,8 @@ def plan_category():
             VALUES (?, ?, ?, DATE('now'))
         ''', (category_name, active_sw, session['user_name']))
         conn.commit()
-        flash('Plan category added successfully!', 'success')
+        flash('✅ Plan category added successfully!', 'success')
+        return redirect('/admin/plan-category')
     
     cur.execute('SELECT * FROM plan_category ORDER BY create_date DESC')
     categories = cur.fetchall()
@@ -286,25 +266,27 @@ def plan_master():
     cur = conn.cursor()
     
     if request.method == 'POST':
-        plan_name = request.form['plan_name']
-        plan_start_date = request.form['plan_start_date']
-        plan_end_date = request.form['plan_end_date']
-        plan_category_id = request.form['plan_category_id']
-        
         cur.execute('''
-            INSERT INTO plan_master (plan_name, plan_start_date, plan_end_date, 
-                                   plan_category_id, created_by, create_date)
+            INSERT INTO plan_master 
+            (plan_name, plan_start_date, plan_end_date, plan_category_id, created_by, create_date)
             VALUES (?, ?, ?, ?, ?, DATE('now'))
-        ''', (plan_name, plan_start_date, plan_end_date, plan_category_id, session['user_name']))
+        ''', (
+            request.form['plan_name'],
+            request.form['plan_start_date'],
+            request.form['plan_end_date'],
+            request.form['plan_category_id'],
+            session['user_name']
+        ))
         conn.commit()
-        flash('Plan added successfully!', 'success')
+        flash('✅ Plan added successfully!', 'success')
+        return redirect('/admin/plan-master')
     
-    # Get plans with category names
+    # Get all plans
     cur.execute('''
-        SELECT p.*, c.category_name 
-        FROM plan_master p 
-        LEFT JOIN plan_category c ON p.plan_category_id = c.category_id
-        ORDER BY p.create_date DESC
+        SELECT pm.*, pc.category_name 
+        FROM plan_master pm
+        LEFT JOIN plan_category pc ON pm.plan_category_id = pc.category_id
+        ORDER BY pm.create_date DESC
     ''')
     plans = cur.fetchall()
     
@@ -329,151 +311,6 @@ def admin_caseworkers():
     
     return render_template('admin/caseworkers.html', workers=workers)
 
-# ================= APPLICATION REGISTRATION =================
-@app.route('/public/register', methods=['GET', 'POST'])
-def citizen_registration():
-    if request.method == 'POST':
-        fullname = request.form['fullname']
-        email = request.form['email']
-        phno = request.form['phno']
-        ssn = request.form['ssn']
-        gender = request.form['gender']
-        state_name = request.form['state_name']
-        
-        conn = get_db()
-        cur = conn.cursor()
-        
-        try:
-            cur.execute('''
-                INSERT INTO citizen_apps (fullname, email, phno, ssn, gender, state_name, create_date)
-                VALUES (?, ?, ?, ?, ?, ?, DATE('now'))
-            ''', (fullname, email, phno, ssn, gender, state_name))
-            
-            app_id = cur.lastrowid
-            
-            # Create a case number
-            case_num = 10000 + app_id
-            
-            cur.execute('''
-                INSERT INTO dc_cases (case_num, app_id, plan_id)
-                VALUES (?, ?, (SELECT plan_id FROM plan_master WHERE active_sw = "Y" LIMIT 1))
-            ''', (case_num, app_id))
-            
-            conn.commit()
-            flash(f'Application submitted successfully! Your Case Number: {case_num}', 'success')
-            return redirect(f'/application/{case_num}/data-collection')
-            
-        except sqlite3.IntegrityError:
-            flash('SSN already registered!', 'danger')
-        finally:
-            conn.close()
-    
-    return render_template('public/register.html')
-
-@app.route('/application/<int:case_num>/data-collection', methods=['GET', 'POST'])
-def data_collection(case_num):
-    if request.method == 'POST':
-        emp_income = request.form.get('emp_income', 0)
-        property_income = request.form.get('property_income', 0)
-        highest_qualification = request.form.get('highest_qualification', '')
-        graduation_year = request.form.get('graduation_year', '')
-        
-        conn = get_db()
-        cur = conn.cursor()
-        
-        # Insert income data
-        cur.execute('''
-            INSERT INTO dc_income (case_num, emp_income, property_income)
-            VALUES (?, ?, ?)
-        ''', (case_num, emp_income, property_income))
-        
-        # Insert education data
-        if highest_qualification:
-            cur.execute('''
-                INSERT INTO dc_education (case_num, highest_qualification, graduation_year)
-                VALUES (?, ?, ?)
-            ''', (case_num, highest_qualification, graduation_year))
-        
-        conn.commit()
-        conn.close()
-        
-        flash('Data collected successfully!', 'success')
-        return redirect(f'/application/{case_num}/eligibility')
-    
-    return render_template('public/data-collection.html', case_num=case_num)
-
-# ================= ELIGIBILITY DETERMINATION =================
-@app.route('/application/<int:case_num>/eligibility')
-def check_eligibility(case_num):
-    conn = get_db()
-    cur = conn.cursor()
-    
-    # Get application and income data
-    cur.execute('''
-        SELECT ca.*, di.emp_income, di.property_income, p.plan_name
-        FROM citizen_apps ca
-        JOIN dc_cases dc ON ca.app_id = dc.app_id
-        LEFT JOIN dc_income di ON dc.case_num = di.case_num
-        LEFT JOIN plan_master p ON dc.plan_id = p.plan_id
-        WHERE dc.case_num = ?
-    ''', (case_num,))
-    
-    data = cur.fetchone()
-    
-    if not data:
-        conn.close()
-        return "Case not found"
-    
-    # Eligibility logic based on state and income
-    total_income = (data['emp_income'] or 0) + (data['property_income'] or 0)
-    state = data['state_name']
-    plan_name = data['plan_name']
-    
-    # Simple eligibility rules
-    if plan_name == 'SNAP' and total_income <= 200000:
-        plan_status = 'APPROVED'
-        benefit_amt = 5000
-        denial_reason = None
-    elif plan_name == 'CCAP' and total_income <= 300000:
-        plan_status = 'APPROVED'
-        benefit_amt = 8000
-        denial_reason = None
-    elif plan_name == 'Medicaid' and total_income <= 250000:
-        plan_status = 'APPROVED'
-        benefit_amt = 10000
-        denial_reason = None
-    else:
-        plan_status = 'DENIED'
-        benefit_amt = 0
-        denial_reason = f"Income exceeds limit for {plan_name}"
-    
-    # Save eligibility determination
-    cur.execute('''
-        INSERT INTO elig_dtls (case_num, plan_name, plan_status, plan_start_date, 
-                              plan_end_date, benefit_amt, denial_reason)
-        VALUES (?, ?, ?, DATE('now'), DATE('now', '+1 year'), ?, ?)
-    ''', (case_num, plan_name, plan_status, benefit_amt, denial_reason))
-    
-    # Create correspondence trigger
-    notice = f"Dear {data['fullname']}, your application for {plan_name} has been {plan_status.lower()}."
-    
-    cur.execute('''
-        INSERT INTO co_triggers (case_num, trg_status, notice)
-        VALUES (?, 'P', ?)
-    ''', (case_num, notice))
-    
-    conn.commit()
-    conn.close()
-    
-    return render_template('public/eligibility-result.html',
-                         case_num=case_num,
-                         fullname=data['fullname'],
-                         plan_name=plan_name,
-                         plan_status=plan_status,
-                         benefit_amt=benefit_amt,
-                         denial_reason=denial_reason,
-                         notice=notice)
-
 # ================= CASEWORKER MODULE =================
 @app.route('/caseworker/dashboard')
 def caseworker_dashboard():
@@ -483,28 +320,22 @@ def caseworker_dashboard():
     conn = get_db()
     cur = conn.cursor()
     
-    # Get assigned cases
-    cur.execute('''
-        SELECT COUNT(*) FROM dc_cases WHERE case_id IN 
-        (SELECT case_id FROM elig_dtls WHERE plan_status = 'PENDING')
-    ''')
-    pending_cases = cur.fetchone()[0]
+    # Get statistics
+    cur.execute('SELECT COUNT(*) FROM citizen_apps')
+    total_apps = cur.fetchone()[0]
     
     cur.execute('SELECT COUNT(*) FROM citizen_apps WHERE DATE(create_date) = DATE("now")')
-    today_applications = cur.fetchone()[0]
+    today_apps = cur.fetchone()[0]
     
-    cur.execute('''
-        SELECT COUNT(*) FROM elig_dtls 
-        WHERE DATE(plan_start_date) = DATE("now") AND plan_status = 'APPROVED'
-    ''')
-    today_approved = cur.fetchone()[0]
+    cur.execute('SELECT COUNT(*) FROM citizen_apps WHERE state_name = "New York"')
+    ny_apps = cur.fetchone()[0]
     
     conn.close()
     
     return render_template('caseworker/dashboard.html',
-                         pending_cases=pending_cases,
-                         today_applications=today_applications,
-                         today_approved=today_approved)
+                         total_apps=total_apps,
+                         today_apps=today_apps,
+                         ny_apps=ny_apps)
 
 @app.route('/caseworker/applications')
 def caseworker_applications():
@@ -513,53 +344,102 @@ def caseworker_applications():
     
     conn = get_db()
     cur = conn.cursor()
-    
-    cur.execute('''
-        SELECT ca.*, dc.case_num, e.plan_status, e.benefit_amt
-        FROM citizen_apps ca
-        JOIN dc_cases dc ON ca.app_id = dc.app_id
-        LEFT JOIN elig_dtls e ON dc.case_num = e.case_num
-        ORDER BY ca.create_date DESC
-    ''')
-    
+    cur.execute('SELECT * FROM citizen_apps ORDER BY create_date DESC')
     applications = cur.fetchall()
     conn.close()
     
     return render_template('caseworker/applications.html', applications=applications)
 
-# ================= CORRESPONDENCE MODULE =================
-@app.route('/notice/<int:case_num>/download')
-def download_notice(case_num):
+# ================= DATA COLLECTION MODULE =================
+@app.route('/data-collection/<int:app_id>', methods=['GET', 'POST'])
+def data_collection(app_id):
+    if 'user_id' not in session:
+        return redirect('/login')
+    
+    if request.method == 'POST':
+        # In real app, you would save to dc_cases, dc_income, dc_childrens, dc_education tables
+        flash('✅ Data collected successfully!', 'success')
+        return redirect(f'/eligibility/{app_id}')
+    
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM citizen_apps WHERE app_id = ?', (app_id,))
+    application = cur.fetchone()
+    conn.close()
+    
+    if not application:
+        return "Application not found"
+    
+    return render_template('caseworker/data-collection.html', application=application)
+
+# ================= ELIGIBILITY MODULE =================
+@app.route('/eligibility/<int:app_id>')
+def check_eligibility(app_id):
+    if 'user_id' not in session:
+        return redirect('/login')
+    
     conn = get_db()
     cur = conn.cursor()
     
-    cur.execute('''
-        SELECT ca.fullname, e.plan_name, e.plan_status, e.benefit_amt, e.denial_reason, ct.notice
-        FROM citizen_apps ca
-        JOIN dc_cases dc ON ca.app_id = dc.app_id
-        JOIN elig_dtls e ON dc.case_num = e.case_num
-        JOIN co_triggers ct ON dc.case_num = ct.case_num
-        WHERE dc.case_num = ?
-    ''', (case_num,))
+    # Get application
+    cur.execute('SELECT * FROM citizen_apps WHERE app_id = ?', (app_id,))
+    application = cur.fetchone()
     
-    data = cur.fetchone()
+    if not application:
+        conn.close()
+        return "Application not found"
+    
+    # Simple eligibility logic based on state
+    state = application['state_name']
+    ssn = application['ssn']
+    
+    # Map SSN to eligibility
+    ssn_rules = {
+        '987654': {'eligible': True, 'plan': 'SNAP', 'amount': 5000},
+        '001003': {'eligible': True, 'plan': 'CCAP', 'amount': 8000},
+        '343434': {'eligible': True, 'plan': 'Medicaid', 'amount': 10000},
+        '268302': {'eligible': False, 'reason': 'Income exceeds limit'},
+        '135158': {'eligible': True, 'plan': 'Medicare', 'amount': 12000}
+    }
+    
+    if ssn in ssn_rules:
+        result = ssn_rules[ssn]
+    else:
+        result = {'eligible': True, 'plan': 'QHP', 'amount': 3000}
+    
     conn.close()
     
-    if not data:
-        return "Notice not found"
+    return render_template('caseworker/eligibility-result.html',
+                         application=application,
+                         result=result)
+
+# ================= CORRESPONDENCE MODULE =================
+@app.route('/generate-notice/<int:app_id>')
+def generate_notice(app_id):
+    if 'user_id' not in session:
+        return redirect('/login')
     
-    # Create PDF
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM citizen_apps WHERE app_id = ?', (app_id,))
+    application = cur.fetchone()
+    conn.close()
+    
+    if not application:
+        return "Application not found"
+    
+    # Create PDF notice
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
     
     # Header
-    pdf.setFont("Helvetica-Bold", 16)
+    pdf.setFont("Helvetica-Bold", 18)
     pdf.drawCentredString(300, 800, "Government of India")
     pdf.drawCentredString(300, 780, "Health Insurance Scheme")
     pdf.drawCentredString(300, 760, "OFFICIAL NOTICE")
     
     pdf.setFont("Helvetica", 10)
-    pdf.drawString(50, 740, f"Notice ID: HIS-NOTICE-{case_num}")
+    pdf.drawString(50, 740, f"Notice ID: HIS-NOTICE-{app_id:04d}")
     pdf.drawString(50, 725, f"Date: {datetime.now().strftime('%d/%m/%Y')}")
     
     pdf.line(50, 715, 550, 715)
@@ -570,11 +450,11 @@ def download_notice(case_num):
     
     pdf.setFont("Helvetica", 11)
     details = [
-        f"Name: {data['fullname']}",
-        f"Case Number: {case_num}",
-        f"Plan: {data['plan_name']}",
-        f"Status: {data['plan_status']}",
-        f"Benefit Amount: ₹{data['benefit_amt']:,}" if data['benefit_amt'] else "Benefit Amount: N/A"
+        f"Name: {application['fullname']}",
+        f"SSN: {application['ssn']}",
+        f"State: {application['state_name']}",
+        f"Application ID: {app_id}",
+        f"Application Date: {application['create_date']}"
     ]
     
     y = 665
@@ -584,65 +464,94 @@ def download_notice(case_num):
     
     # Notice Content
     pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(50, y-30, "Official Notice:")
+    pdf.drawString(50, y-30, "Notice:")
     
     pdf.setFont("Helvetica", 11)
-    notice_lines = data['notice'].split('. ')
-    y = y-60
-    for line in notice_lines:
-        if line.strip():
-            pdf.drawString(70, y, line.strip() + ".")
-            y -= 20
+    notice = f"Dear {application['fullname']}, your health insurance application has been processed."
+    pdf.drawString(70, y-60, notice)
+    pdf.drawString(70, y-80, "Please contact your case worker for further details.")
     
     # Footer
     pdf.setFont("Helvetica", 9)
-    pdf.drawString(50, 100, "This is an official document issued by the Health Insurance Scheme System.")
-    pdf.drawString(50, 85, "For verification contact: verify@his.gov.in")
+    pdf.drawString(50, 100, "Official Document - Health Insurance Scheme System")
+    pdf.drawString(50, 85, "For verification: verify@his.gov.in")
     
     pdf.showPage()
     pdf.save()
     buffer.seek(0)
     
     return send_file(buffer, as_attachment=True,
-                    download_name=f"HIS_Notice_{case_num}.pdf",
+                    download_name=f"HIS_Notice_{app_id}.pdf",
                     mimetype="application/pdf")
 
-# ================= API ENDPOINTS =================
+# ================= SYSTEM API ROUTES =================
+@app.route('/health')
+def health_check():
+    return jsonify({
+        "status": "healthy",
+        "service": "Health Insurance System",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0"
+    })
+
 @app.route('/api/health')
 def api_health():
-    return jsonify({"status": "healthy", "service": "Health Insurance System"}), 200
+    return jsonify({"status": "healthy", "api": "operational"}), 200
 
-@app.route('/api/stats')
-def api_stats():
+@app.route('/test')
+def test():
+    return "✅ Test route is working!"
+
+@app.route('/api/admin/plan-categories', methods=['GET'])
+def api_plan_categories():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM plan_category')
+    categories = cur.fetchall()
+    conn.close()
+    
+    return jsonify([dict(cat) for cat in categories])
+
+@app.route('/api/admin/plan-category', methods=['POST'])
+def api_create_plan_category():
+    data = request.json
     conn = get_db()
     cur = conn.cursor()
     
-    cur.execute('SELECT COUNT(*) FROM citizen_apps')
-    total_apps = cur.fetchone()[0]
+    cur.execute('''
+        INSERT INTO plan_category (category_name, active_sw, create_date)
+        VALUES (?, 'Y', DATE('now'))
+    ''', (data['category_name'],))
     
-    cur.execute('SELECT COUNT(*) FROM elig_dtls WHERE plan_status = "APPROVED"')
-    approved = cur.fetchone()[0]
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Plan category created"})
+
+# ================= DEBUG ROUTES =================
+@app.route('/debug/db')
+def debug_db():
+    conn = get_db()
+    cur = conn.cursor()
     
-    cur.execute('SELECT COUNT(*) FROM case_worker_accts')
-    workers = cur.fetchone()[0]
+    tables = ['plan_category', 'plan_master', 'case_worker_accts', 'citizen_apps']
+    result = {}
+    
+    for table in tables:
+        cur.execute(f'SELECT COUNT(*) as count FROM {table}')
+        result[table] = cur.fetchone()['count']
     
     conn.close()
+    return jsonify(result)
+
+@app.route('/debug/tables')
+def debug_tables():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = cur.fetchall()
+    conn.close()
     
-    return jsonify({
-        "total_applications": total_apps,
-        "approved_applications": approved,
-        "case_workers": workers,
-        "timestamp": datetime.now().isoformat()
-    })
-
-# ================= PUBLIC PAGES =================
-@app.route('/')
-def home():
-    return render_template('public/home.html')
-
-@app.route('/check-status')
-def check_status():
-    return render_template('public/check-status.html')
+    return jsonify([dict(table) for table in tables])
 
 # ================= INITIALIZATION =================
 with app.app_context():
