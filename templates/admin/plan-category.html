@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Plan Categories</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h2>Plan Categories</h2>
+    <a href="/admin/plan-category">Back</a>
+    <ul>
+        {% for c in categories %}
+            <li>{{ c['category_name'] }} - Active: {{ c['active_sw'] }}</li>
+        {% endfor %}
+    </ul>
+
+    <h3>Add Category</h3>
+    <form method="POST">
+        <input name="category_name" placeholder="Category name" required>
+        <button type="submit">Add</button>
+    </form>
+</body>
+</html>

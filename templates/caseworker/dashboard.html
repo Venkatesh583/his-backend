@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Worker Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Case Worker</h2>
+        <a href="/caseworker/dashboard">Dashboard</a>
+        <a href="/create-application">Create Application</a>
+        <a href="/caseworker/applications">Application List</a>
+    </div>
+
+    <div class="main-content">
+        <h1>Welcome, Case Worker!</h1>
+        <div class="card">Total Applications: {{ total_apps }}</div>
+        <div class="card">Today: {{ today_apps }}</div>
+    </div>
+</body>
+</html>

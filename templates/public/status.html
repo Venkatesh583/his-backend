@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Application Status</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h2>Application Status</h2>
+
+        {% if application %}
+            <p><strong>Application ID:</strong> {{ application['app_id'] }}</p>
+            <p><strong>Name:</strong> {{ application['fullname'] }}</p>
+            <p><strong>SSN:</strong> {{ application['ssn'] }}</p>
+            <p><strong>State:</strong> {{ application['state_name'] }}</p>
+            <p><strong>Submitted:</strong> {{ application['create_date'] }}</p>
+        {% else %}
+            <p>Application not found.</p>
+        {% endif %}
+
+        <a href="/">Back Home</a>
+    </div>
+</body>
+</html>

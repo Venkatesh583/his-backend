@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Plan Master</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h2>Plans</h2>
+    <a href="/admin/plan-master">Back</a>
+    <ul>
+        {% for p in plans %}
+            <li>{{ p['plan_name'] }} ({{ p['create_date'] }}) - Category: {{ p['plan_category_id'] }}</li>
+        {% endfor %}
+    </ul>
+
+    <h3>Add Plan</h3>
+    <form method="POST">
+        <input name="plan_name" placeholder="Plan name" required>
+        <input name="plan_start_date" placeholder="YYYY-MM-DD">
+        <input name="plan_end_date" placeholder="YYYY-MM-DD">
+        <select name="plan_category_id">
+            {% for c in categories %}
+                <option value="{{ c['category_id'] }}">{{ c['category_name'] }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Add Plan</button>
+    </form>
+</body>
+</html>

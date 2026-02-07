@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Eligibility Result</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>.badge { font-weight:bold; }</style>
+</head>
+<body>
+    <h2>Eligibility Result</h2>
+
+    <p>Plan Selected: <b>{{ result.plan if result.plan else result['plan'] if result else '' }}</b></p>
+    <p>Status: <b>{{ result.plan_status if result and result.plan_status else result['status'] if result else status }}</b></p>
+
+    {% if result.eligible or result['eligible'] %}
+        <p style="color:green;">✔ Citizen is eligible for benefits</p>
+    {% else %}
+        <p style="color:red;">✖ Citizen is not eligible</p>
+    {% endif %}
+
+    <a href="/caseworker/applications">Go Back</a>
+</body>
+</html>

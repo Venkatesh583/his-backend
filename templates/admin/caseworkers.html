@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Caseworkers</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h2>Caseworkers</h2>
+    <a href="/admin/dashboard">Back</a>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for cat, msg in messages %}
+                    <div class="flash {{ cat }}">{{ msg }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    <h3>Add Caseworker</h3>
+    <form method="POST" action="/admin/caseworkers">
+        <input name="fullname" placeholder="Full name" required>
+        <input name="email" placeholder="Email" required>
+        <input name="pwd" placeholder="Password" required>
+        <input name="phno" placeholder="Phone">
+        <input name="ssn" placeholder="SSN">
+        <input name="dob" placeholder="YYYY-MM-DD">
+        <select name="gender">
+            <option value="">Gender</option>
+            <option value="M">Male</option>
+            <option value="F">Female</option>
+        </select>
+        <button type="submit">Add Caseworker</button>
+    </form>
+
+    <div id="ajax-result" style="margin-top:10px"></div>
+
+    <script>
+    (function(){
+        const form = document.querySelector('form[action="/admin/caseworkers"]');
+        const box = document.getElementById('ajax-result');
+
+        function validateEmail(email) {
+            return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+        }
+
+        form.addEventListener('submit', async function(e){
+            e.preventDefault();
+
+            // Client-side validation
+            const fullname = form.fullname.value.trim();
+            const email = form.email.value.trim();
+            const pwd = form.pwd.value;
+            const ssn = (form.ssn && form.ssn.value) ? form.ssn.value.trim() : '';
+            const phno = (form.phno && form.phno.value) ? form.phno.value.trim() : '';
+
+            if(!fullname){ box.innerText = 'Full name is required'; box.style.color='red'; return; }
+            if(!email || !validateEmail(email)){ box.innerText = 'Enter a valid email address'; box.style.color='red'; return; }
+            if(!pwd || pwd.length < 6){ box.innerText = 'Password must be at least 6 characters'; box.style.color='red'; return; }
+            if(ssn && (ssn.length < 4 || ssn.length > 20)){ box.innerText = 'SSN length looks invalid'; box.style.color='red'; return; }
+            if(phno && !/^[0-9+\- ]{6,20}$/.test(phno)){ box.innerText = 'Phone number looks invalid'; box.style.color='red'; return; }
+
+            box.innerText = 'Submitting...'; box.style.color='black';
+
+            try{
+                const data = new FormData(form);
+                const resp = await fetch(form.action, {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: data
+                });
+                const result = await resp.json().catch(()=>({success:false,message:'Invalid response'}));
+                box.innerText = result.message || 'No response';
+                box.style.color = result.success ? 'green' : 'red';
+
+                if(result.success){ setTimeout(()=> location.reload(), 700); }
+            } catch(err){
+                box.innerText = 'Network error'; box.style.color='red';
+            }
+        });
+    })();
+    </script>
+
+    <h3>Existing Caseworkers</h3>
+    <ul>
+        {% for w in workers %}
+            <li>{{ w['fullname'] }} ({{ w['email'] }}) - Active: {{ w['active_sw'] }}</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

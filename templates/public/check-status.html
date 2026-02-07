@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check Application Status</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h2>Check Application Status</h2>
+        <form method="GET" action="/application-status-search">
+            <label>Application ID</label>
+            <input name="app_id" placeholder="Enter Application ID">
+            <button type="submit">Search</button>
+        </form>
+
+        <p>Or ask your case worker for help.</p>
+    </div>
+</body>
+</html>

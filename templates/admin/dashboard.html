@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Health Insurance Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .container { max-width: 900px; margin: 30px auto; padding: 20px; }
+        .menu-item { display:block; margin:10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 Health Insurance System - Admin Panel</h1>
+        <p>Welcome to the administrator dashboard</p>
+        
+        <div class="menu">
+            <a href="/admin/plan-category" class="menu-item">📋 Manage Plan Categories</a>
+            <a href="/admin/plan-master" class="menu-item">📋 Manage Plans</a>
+            <a href="/admin/caseworkers" class="menu-item">👨‍💼 Caseworkers</a>
+            <a href="/admin/plan-master" class="menu-item">➕ Create New Plan</a>
+            <a href="/" class="menu-item" style="color:#e74c3c;">🚪 Logout</a>
+        </div>
+    </div>
+</body>
+</html>

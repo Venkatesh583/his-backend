@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Application List</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h2>Application List</h2>
+
+    <table>
+        <tr><th>Name</th><th>Phone</th><th>State</th><th>Action</th></tr>
+        {% for app in applications %}
+        <tr>
+            <td>{{ app['fullname'] }}</td>
+            <td>{{ app['phno'] }}</td>
+            <td>{{ app['state_name'] }}</td>
+            <td><a href="/data-collection/{{ app['app_id'] }}">Collect Data</a></td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

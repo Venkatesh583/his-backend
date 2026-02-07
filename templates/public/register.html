@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Application</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .box { max-width:420px; margin:40px auto; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2>Create Application</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat, msg in messages %}
+          <div class="flash {{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form id="public-register" method="POST" action="/public/register">
+
+        <input type="text" name="fullname" id="fullname" placeholder="Full Name" required>
+
+        <input type="text" name="phno" id="phno" placeholder="Phone">
+
+        <input type="text" name="email" id="email" placeholder="Email">
+
+        <input type="text" name="ssn" id="ssn" placeholder="SSN" required>
+
+        <select name="gender" id="gender">
+            <option value="M">Male</option>
+            <option value="F">Female</option>
+        </select>
+
+        <input type="text" name="state_name" id="state_name" placeholder="State" value="New York">
+
+        <div id="form-error" class="form-error" aria-live="polite"></div>
+
+        <button type="submit">Submit Application</button>
+
+    </form>
+
+    <script>
+    (function(){
+        const form = document.getElementById('public-register');
+        const err = document.getElementById('form-error');
+        function validateEmail(email){ return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email); }
+        form.addEventListener('submit', function(e){
+            err.innerText = '';
+            const full = form.fullname.value.trim();
+            const email = form.email.value.trim();
+            const ssn = form.ssn.value.trim();
+            const ph = form.phno.value.trim();
+
+            if(!full){ err.innerText = 'Full name is required'; err.style.color='red'; e.preventDefault(); return; }
+            if(email && !validateEmail(email)){ err.innerText = 'Enter a valid email'; err.style.color='red'; e.preventDefault(); return; }
+            if(!ssn || ssn.length < 3){ err.innerText = 'Enter a valid SSN'; err.style.color='red'; e.preventDefault(); return; }
+            if(ph && !/^[0-9+\- ]{6,20}$/.test(ph)){ err.innerText = 'Phone number looks invalid'; err.style.color='red'; e.preventDefault(); return; }
+        });
+    })();
+    </script>
+</div>
+
+</body>
+</html>

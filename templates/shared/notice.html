@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Correspondence Notice</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="box">
+    <h2>HIS – Official Notice</h2>
+    <p><strong>Citizen:</strong> {{ full_name }}</p>
+    <p><strong>Plan:</strong> {{ scheme }}</p>
+    <p><strong>Status:</strong> <span class="status">{{ status }}</span></p>
+    <hr>
+    <p>{{ notice }}</p>
+    <br>
+    <a href="/caseworker/applications">⬅ Back to Applications</a>
+    <br><br>
+    <a href="/generate-notice/{{ app_id }}"><button>Download Notice (PDF)</button></a>
+</div>
+</body>
+</html>
