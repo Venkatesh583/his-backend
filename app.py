@@ -698,6 +698,7 @@ def application_status_search():
     return redirect(f'/application/{int_app_id}/status')
 
 @app.route('/check-status')
+@app.route('/public/check-status')
 def check_status_page():
     return render_template('public/check-status.html')
 
