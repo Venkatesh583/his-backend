@@ -12,23 +12,66 @@ app.config['SESSION_TYPE'] = 'filesystem'
 
 # ================= DATABASE CONFIG =================
 
+import os
+
 def get_db():
-    conn = psycopg2.connect(
-        host="localhost",
-        database="postgres",
-        user="postgres",
-        password="venky@123"   # 🔴 replace with your real password
-    )
-    return conn
+    """Get PostgreSQL connection"""
+    try:
+        # Use environment variables from Render
+        conn = psycopg2.connect(
+            host=os.environ.get('DB_HOST', 'dpg-d702i27kijhs73d5c280-a.oregon-postgres.render.com'),
+            port=os.environ.get('DB_PORT', 5432),
+            database=os.environ.get('DB_NAME', 'his_db_fefp'),
+            user=os.environ.get('DB_USER', 'his_user'),
+            password=os.environ.get('DB_PASSWORD', '4iR6UV9XMeCZF8x0dKuMfzRMIkAahBs5'),
+            sslmode='require'
+        )
+        return conn
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        raise
 
 def init_tables():
-    """Create all tables in public schema"""
+    """Create all tables"""
     conn = get_db()
     cur = conn.cursor()
     
-    # Set schema path
-    cur.execute("SET search_path TO public;")
+    # Create citizen_apps table
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS citizen_apps (
+            app_id SERIAL PRIMARY KEY,
+            fullname VARCHAR(200) NOT NULL,
+            email VARCHAR(100),
+            phno VARCHAR(20),
+            ssn VARCHAR(20) UNIQUE,
+            gender CHAR(1),
+            state_name VARCHAR(100),
+            create_date DATE DEFAULT CURRENT_DATE,
+            update_date DATE,
+            created_by VARCHAR(50)
+        )
+    ''')
     
+    conn.commit()
+    print("✅ citizen_apps table created")
+    
+    # Insert sample data if empty
+    cur.execute("SELECT COUNT(*) FROM citizen_apps")
+    if cur.fetchone()[0] == 0:
+        cur.execute('''
+            INSERT INTO citizen_apps (fullname, email, phno, ssn, gender, state_name, created_by)
+            VALUES 
+            ('Robert Brown', 'robert@email.com', '555-1234', '987-65-4321', 'M', 'New York', 'SYSTEM'),
+            ('Alice Green', 'alice@email.com', '555-5678', '001-00-3003', 'F', 'Rhode Island', 'SYSTEM'),
+            ('Mike Wilson', 'mike@email.com', '555-9012', '343-43-4343', 'M', 'California', 'SYSTEM'),
+            ('Lisa Taylor', 'lisa@email.com', '555-3456', '268-30-2002', 'F', 'Ohio', 'SYSTEM'),
+            ('David Miller', 'david@email.com', '555-7890', '135-15-8158', 'M', 'New Jersey', 'SYSTEM')
+        ''')
+        conn.commit()
+        print("✅ Sample data inserted")
+    
+    cur.close()
+    conn.close()    
     # Table-1: PLAN_CATEGORY
     cur.execute('''
         CREATE TABLE IF NOT EXISTS public.plan_category (
