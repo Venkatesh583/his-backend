@@ -37,7 +37,26 @@ def init_tables():
         conn = get_db()
         cur = conn.cursor()
         
-        # Create citizen_apps table
+        # Table: case_worker_accts
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS case_worker_accts (
+                worker_id SERIAL PRIMARY KEY,
+                fullname VARCHAR(100) NOT NULL,
+                email VARCHAR(100) UNIQUE,
+                pwd VARCHAR(100),
+                phno VARCHAR(15),
+                gender CHAR(1),
+                ssn VARCHAR(20) UNIQUE,
+                dob DATE,
+                active_sw CHAR(1) DEFAULT 'Y',
+                create_date DATE DEFAULT CURRENT_DATE,
+                update_date DATE,
+                created_by VARCHAR(50),
+                updated_by VARCHAR(50)
+            )
+        ''')
+        
+        # Table: citizen_apps
         cur.execute('''
             CREATE TABLE IF NOT EXISTS citizen_apps (
                 app_id SERIAL PRIMARY KEY,
@@ -53,29 +72,33 @@ def init_tables():
             )
         ''')
         
-        # Check if data exists
-        cur.execute("SELECT COUNT(*) FROM citizen_apps")
-        count = cur.fetchone()[0]
+        # Insert default case workers
+        cur.execute("SELECT COUNT(*) FROM case_worker_accts")
+        if cur.fetchone()[0] == 0:
+            cur.execute('''
+                INSERT INTO case_worker_accts (fullname, email, pwd, phno, gender, ssn, dob, created_by)
+                VALUES 
+                ('Admin User', 'admin@his.gov', 'admin123', '9876543210', 'M', '987654', '1990-01-01', 'SYSTEM'),
+                ('Case Worker 1', 'worker1@his.gov', 'worker123', '9876543211', 'F', '001003', '1992-05-15', 'SYSTEM')
+            ''')
         
-        if count == 0:
+        # Insert sample citizen data if empty
+        cur.execute("SELECT COUNT(*) FROM citizen_apps")
+        if cur.fetchone()[0] == 0:
             cur.execute('''
                 INSERT INTO citizen_apps (fullname, email, phno, ssn, gender, state_name, created_by)
                 VALUES 
                 ('Robert Brown', 'robert@email.com', '555-1234', '987-65-4321', 'M', 'New York', 'SYSTEM'),
-                ('Alice Green', 'alice@email.com', '555-5678', '001-00-3003', 'F', 'Rhode Island', 'SYSTEM'),
-                ('Mike Wilson', 'mike@email.com', '555-9012', '343-43-4343', 'M', 'California', 'SYSTEM'),
-                ('Lisa Taylor', 'lisa@email.com', '555-3456', '268-30-2002', 'F', 'Ohio', 'SYSTEM'),
-                ('David Miller', 'david@email.com', '555-7890', '135-15-8158', 'M', 'New Jersey', 'SYSTEM')
+                ('Alice Green', 'alice@email.com', '555-5678', '001-00-3003', 'F', 'Rhode Island', 'SYSTEM')
             ''')
         
         conn.commit()
-        print("✅ citizen_apps table ready")
-        
+        print("✅ All tables created")
         cur.close()
         conn.close()
         
     except Exception as e:
-        print(f"❌ Error in init_tables: {e}")    
+        print(f"❌ Error in init_tables: {e}")
     # Table-1: PLAN_CATEGORY
     cur.execute('''
         CREATE TABLE IF NOT EXISTS public.plan_category (
@@ -1337,8 +1360,8 @@ def debug_tables():
     return jsonify([table[0] for table in tables])
 
 # ================= INITIALIZATION =================
-#with app.app_context():
- #   init_tables()
+with app.app_context():
+    init_tables()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
