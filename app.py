@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, send_file, jsonify, session, flash
-import sqlite3
+import psycopg2
 import os
 import io
 from reportlab.lib.pagesizes import A4
@@ -11,23 +11,28 @@ app.secret_key = "health_insurance_system_2025"
 app.config['SESSION_TYPE'] = 'filesystem'
 
 # ================= DATABASE CONFIG =================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_NAME = os.path.join(BASE_DIR, "his.db")
 
 def get_db():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(
+        host="localhost",
+        database="postgres",
+        user="postgres",
+        password="venky@123"   # 🔴 replace with your real password
+    )
     return conn
 
 def init_tables():
-    """Create all tables from your project description"""
+    """Create all tables in public schema"""
     conn = get_db()
     cur = conn.cursor()
-
-    # Table-1: PLAN_CATEGORY (already exists)
+    
+    # Set schema path
+    cur.execute("SET search_path TO public;")
+    
+    # Table-1: PLAN_CATEGORY
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS plan_category (
-            category_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS public.plan_category (
+            category_id SERIAL PRIMARY KEY,
             category_name VARCHAR(100) NOT NULL,
             active_sw CHAR(1) DEFAULT 'Y',
             create_date DATE DEFAULT CURRENT_DATE,
@@ -36,15 +41,15 @@ def init_tables():
             updated_by VARCHAR(50)
         )
     ''')
-
-    # Table-2: PLAN_MASTER (already exists)
+    
+    # Table-2: PLAN_MASTER
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS plan_master (
-            plan_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS public.plan_master (
+            plan_id SERIAL PRIMARY KEY,
             plan_name VARCHAR(100) NOT NULL,
             plan_start_date DATE,
             plan_end_date DATE,
-            plan_category_id INTEGER,
+            plan_category_id INTEGER REFERENCES public.plan_category(category_id),
             active_sw CHAR(1) DEFAULT 'Y',
             create_date DATE DEFAULT CURRENT_DATE,
             update_date DATE,
@@ -52,11 +57,11 @@ def init_tables():
             updated_by VARCHAR(50)
         )
     ''')
-
-    # Table-3: CASE_WORKER_ACCTS (already exists)
+    
+    # Table-3: CASE_WORKER_ACCTS
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS case_worker_accts (
-            acc_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS public.case_worker_accts (
+            worker_id SERIAL PRIMARY KEY,
             fullname VARCHAR(100) NOT NULL,
             email VARCHAR(100) UNIQUE,
             pwd VARCHAR(100),
@@ -71,149 +76,201 @@ def init_tables():
             updated_by VARCHAR(50)
         )
     ''')
-
-    # Table-4: CITIZEN_APPS (already exists)
+    
+    # Table-4: CITIZEN_APPS (main table)
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS citizen_apps (
-            app_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fullname VARCHAR(100) NOT NULL,
+        CREATE TABLE IF NOT EXISTS public.citizen_apps (
+            app_id SERIAL PRIMARY KEY,
+            fullname VARCHAR(200) NOT NULL,
             email VARCHAR(100),
-            phno VARCHAR(15),
+            phno VARCHAR(20),
             ssn VARCHAR(20) UNIQUE,
             gender CHAR(1),
-            state_name VARCHAR(50),
+            state_name VARCHAR(100),
             create_date DATE DEFAULT CURRENT_DATE,
             update_date DATE,
-            created_by VARCHAR(50),
-            updated_by VARCHAR(50)
+            created_by VARCHAR(50)
         )
     ''')
-
-    # ================= NEW TABLES =================
     
-    # Table-5: DC_CASES (NEW)
+    # Table-5: DC_CASES
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS dc_cases (
-            case_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS public.dc_cases (
+            case_id SERIAL PRIMARY KEY,
             case_num INTEGER UNIQUE NOT NULL,
-            app_id INTEGER NOT NULL,
-            plan_id INTEGER NOT NULL,
-            FOREIGN KEY (app_id) REFERENCES citizen_apps(app_id),
-            FOREIGN KEY (plan_id) REFERENCES plan_master(plan_id)
+            app_id INTEGER REFERENCES public.citizen_apps(app_id),
+            plan_id INTEGER REFERENCES public.plan_master(plan_id)
         )
     ''')
-
-    # Table-6: DC_INCOME (NEW)
+    
+    # Table-6: DC_INCOME
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS dc_income (
-            income_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS public.dc_income (
+            income_id SERIAL PRIMARY KEY,
+            case_num INTEGER REFERENCES public.dc_cases(case_num),
             emp_income DECIMAL(10,2) DEFAULT 0,
-            property_income DECIMAL(10,2) DEFAULT 0,
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
+            property_income DECIMAL(10,2) DEFAULT 0
         )
     ''')
-
-    # Table-7: DC_CHILDRENS (NEW)
+    
+    # Table-7: DC_CHILDRENS
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS dc_childrens (
-            children_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS public.dc_childrens (
+            child_id SERIAL PRIMARY KEY,
+            case_num INTEGER REFERENCES public.dc_cases(case_num),
             children_dob DATE NOT NULL,
-            children_ssn VARCHAR(20),
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
+            children_ssn VARCHAR(20)
         )
     ''')
-
-    # Table-8: DC_EDUCATION (NEW)
+    
+    # Table-8: DC_EDUCATION
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS dc_education (
-            edu_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS public.dc_education (
+            edu_id SERIAL PRIMARY KEY,
+            case_num INTEGER REFERENCES public.dc_cases(case_num),
             highest_qualification VARCHAR(100),
-            graduation_year INTEGER,
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
+            graduation_year INTEGER
         )
     ''')
-
-    # Table-9: ELIG_DTLS (NEW)
+    
+    # Table-9: ELIG_DTLS
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS elig_dtls (
-            elig_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS public.elig_dtls (
+            elig_id SERIAL PRIMARY KEY,
+            case_num INTEGER REFERENCES public.dc_cases(case_num),
             plan_name VARCHAR(100) NOT NULL,
             plan_status VARCHAR(20) NOT NULL,
             plan_start_date DATE,
             plan_end_date DATE,
             benefit_amt DECIMAL(10,2),
             denial_reason VARCHAR(500),
-            create_date DATE DEFAULT CURRENT_DATE,
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
+            create_date DATE DEFAULT CURRENT_DATE
         )
     ''')
-
-    # Table-10: CO_TRIGGERS (NEW)
+    
+    # Table-10: CO_TRIGGERS
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS co_triggers (
-            trg_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_num INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS public.co_triggers (
+            trigger_id SERIAL PRIMARY KEY,
+            case_num INTEGER REFERENCES public.dc_cases(case_num),
             trg_status CHAR(1) DEFAULT 'P',
             notice TEXT,
             create_date DATE DEFAULT CURRENT_DATE,
-            update_date DATE,
-            FOREIGN KEY (case_num) REFERENCES dc_cases(case_num)
+            update_date DATE
         )
     ''')
-
-    # Insert default data
-    cur.execute('''
-        INSERT OR IGNORE INTO case_worker_accts
-        (fullname, email, pwd, phno, gender, ssn, dob, created_by)
-        VALUES
-        ('Admin User', 'admin@his.gov', 'admin123', '9876543210', 'M', '987654', '1990-01-01', 'SYSTEM'),
-        ('Case Worker 1', 'worker1@his.gov', 'worker123', '9876543211', 'F', '001003', '1992-05-15', 'SYSTEM')
-    ''')
-
-    # Insert plan categories
-    categories = ['SNAP', 'CCAP', 'Medicaid', 'Medicare', 'QHP']
-    for cat in categories:
-        cur.execute('''
-            INSERT OR IGNORE INTO plan_category (category_name, created_by)
-            VALUES (?, 'SYSTEM')
-        ''', (cat,))
-
-    # Insert sample plans
-    cur.execute('''
-        INSERT OR IGNORE INTO plan_master
-        (plan_name, plan_start_date, plan_end_date, plan_category_id, created_by)
-        VALUES
-        ('SNAP Benefits', '2024-01-01', '2024-12-31', 
-         (SELECT category_id FROM plan_category WHERE category_name='SNAP'), 'SYSTEM'),
-        ('Medicaid Basic', '2024-01-01', '2024-12-31', 
-         (SELECT category_id FROM plan_category WHERE category_name='Medicaid'), 'SYSTEM')
-    ''')
-
-    # Insert sample citizen applications (from your SSN-State mapping)
-    citizens_data = [
-        ('Robert Brown', 'robert@email.com', '555-1234', '987-65-4321', 'M', 'New York'),
-        ('Alice Green', 'alice@email.com', '555-5678', '001-00-3003', 'F', 'Rhode Island'),
-        ('Mike Wilson', 'mike@email.com', '555-9012', '343-43-4343', 'M', 'California'),
-        ('Lisa Taylor', 'lisa@email.com', '555-3456', '268-30-2002', 'F', 'Ohio'),
-        ('David Miller', 'david@email.com', '555-7890', '135-15-8158', 'M', 'New Jersey')
-    ]
-
-    for citizen in citizens_data:
-        cur.execute('''
-            INSERT OR IGNORE INTO citizen_apps
-            (fullname, email, phno, ssn, gender, state_name, create_date)
-            VALUES (?, ?, ?, ?, ?, ?, DATE('now'))
-        ''', citizen)
-
+    
     conn.commit()
+    print("✅ All tables created in public schema")
+    
+    cur.close()
     conn.close()
-    print("✅ Database initialized with all 10 tables")
+    
+    # ================= INSERT DEFAULT DATA =================
+    
+    # Insert case workers
+    cur.execute("SELECT COUNT(*) FROM case_worker_accts")
+    worker_count = cur.fetchone()[0]
+    
+    if worker_count == 0:
+        cur.execute('''
+            INSERT INTO case_worker_accts 
+            (fullname, email, pwd, phno, gender, ssn, dob, created_by)
+            VALUES 
+            (%s, %s, %s, %s, %s, %s, %s, %s),
+            (%s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (
+            'Admin User', 'admin@his.gov', 'admin123', '9876543210', 'M', '987654', '1990-01-01', 'SYSTEM',
+            'Case Worker 1', 'worker1@his.gov', 'worker123', '9876543211', 'F', '001003', '1992-05-15', 'SYSTEM'
+        ))
+        print("✅ Case workers added")
+    
+    # Insert plan categories
+    cur.execute("SELECT COUNT(*) FROM plan_category")
+    category_count = cur.fetchone()[0]
+    
+    if category_count == 0:
+        categories = ['SNAP', 'CCAP', 'Medicaid', 'Medicare', 'QHP']
+        for cat in categories:
+            cur.execute('''
+                INSERT INTO plan_category (category_name, created_by)
+                VALUES (%s, %s)
+            ''', (cat, 'SYSTEM'))
+        print("✅ Plan categories added")
+    
+    # Insert sample plans
+    cur.execute("SELECT COUNT(*) FROM plan_master")
+    plan_count = cur.fetchone()[0]
+    
+    if plan_count == 0:
+        # Get category IDs
+        cur.execute("SELECT category_id FROM plan_category WHERE category_name = 'SNAP'")
+        snap_id = cur.fetchone()
+        
+        cur.execute("SELECT category_id FROM plan_category WHERE category_name = 'Medicaid'")
+        medicaid_id = cur.fetchone()
+        
+        if snap_id:
+            cur.execute('''
+                INSERT INTO plan_master 
+                (plan_name, plan_start_date, plan_end_date, plan_category_id, created_by)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', ('SNAP Benefits', '2024-01-01', '2024-12-31', snap_id[0], 'SYSTEM'))
+        
+        if medicaid_id:
+            cur.execute('''
+                INSERT INTO plan_master 
+                (plan_name, plan_start_date, plan_end_date, plan_category_id, created_by)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', ('Medicaid Basic', '2024-01-01', '2024-12-31', medicaid_id[0], 'SYSTEM'))
+        print("✅ Sample plans added")
+    
+    # Insert sample citizen applications
+    cur.execute("SELECT COUNT(*) FROM citizen_apps")
+    citizen_count = cur.fetchone()[0]
+    
+    if citizen_count == 0:
+        citizens_data = [
+            ('Robert Brown', 'robert@email.com', '555-1234', '987-65-4321', 'M', 'New York'),
+            ('Alice Green', 'alice@email.com', '555-5678', '001-00-3003', 'F', 'Rhode Island'),
+            ('Mike Wilson', 'mike@email.com', '555-9012', '343-43-4343', 'M', 'California'),
+            ('Lisa Taylor', 'lisa@email.com', '555-3456', '268-30-2002', 'F', 'Ohio'),
+            ('David Miller', 'david@email.com', '555-7890', '135-15-8158', 'M', 'New Jersey')
+        ]
+        
+        for citizen in citizens_data:
+            cur.execute('''
+                INSERT INTO citizen_apps 
+                (fullname, email, phno, ssn, gender, state_name, create_date, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, %s)
+            ''', (citizen[0], citizen[1], citizen[2], citizen[3], citizen[4], citizen[5], 'SYSTEM'))
+        print("✅ Sample citizens added")
+    
+    conn.commit()
+    
+    # Verify tables created
+    cur.execute("""
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+        ORDER BY table_name;
+    """)
+    tables = cur.fetchall()
+    
+    print("\n" + "="*50)
+    print("📊 PostgreSQL Database Setup Complete!")
+    print("="*50)
+    print(f"✅ Total tables created: {len(tables)}")
+    for table in tables:
+        cur.execute(f"SELECT COUNT(*) FROM {table[0]}")
+        count = cur.fetchone()[0]
+        print(f"   - {table[0]}: {count} records")
+    print("="*50)
+    
+    cur.close()
+    conn.close()
 
-    # ================= DATA COLLECTION MODULE APIS =================
+# ================= DATA COLLECTION MODULE APIS =================
 
 @app.route('/api/dc/create-case', methods=['POST'])
 def api_create_case():
@@ -230,10 +287,11 @@ def api_create_case():
 
         cur.execute('''
             INSERT INTO dc_cases (case_num, app_id, plan_id)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
+            RETURNING case_id
         ''', (case_num, data['app_id'], data['plan_id']))
 
-        case_id = cur.lastrowid
+        case_id = cur.fetchone()[0]
         conn.commit()
 
         return jsonify({
@@ -259,7 +317,8 @@ def api_add_income(case_num):
     try:
         cur.execute('''
             INSERT INTO dc_income (case_num, emp_income, property_income)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
+            RETURNING income_id
         ''', (case_num, data.get('emp_income', 0), data.get('property_income', 0)))
 
         conn.commit()
@@ -280,7 +339,8 @@ def api_add_child(case_num):
     try:
         cur.execute('''
             INSERT INTO dc_childrens (case_num, children_dob, children_ssn)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
+            RETURNING child_id
         ''', (case_num, data['children_dob'], data.get('children_ssn')))
 
         conn.commit()
@@ -301,7 +361,8 @@ def api_add_education(case_num):
     try:
         cur.execute('''
             INSERT INTO dc_education (case_num, highest_qualification, graduation_year)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
+            RETURNING edu_id
         ''', (case_num, data['highest_qualification'], data.get('graduation_year')))
 
         conn.commit()
@@ -321,29 +382,33 @@ def api_check_eligibility(case_num):
     cur = conn.cursor()
 
     try:
-        # Get case details
+        # Get case details - using column names properly
         cur.execute('''
             SELECT dc.case_num, ca.fullname, ca.state_name, ca.ssn, pm.plan_name
             FROM dc_cases dc
             JOIN citizen_apps ca ON dc.app_id = ca.app_id
             JOIN plan_master pm ON dc.plan_id = pm.plan_id
-            WHERE dc.case_num = ?
+            WHERE dc.case_num = %s
         ''', (case_num,))
         case_data = cur.fetchone()
 
         if not case_data:
             return jsonify({"success": False, "error": "Case not found"}), 404
 
+        # Convert to dict for easier access
+        case_dict = dict(zip(['case_num', 'fullname', 'state_name', 'ssn', 'plan_name'], case_data))
+
         # Get income data
-        cur.execute('SELECT * FROM dc_income WHERE case_num = ?', (case_num,))
-        income_data = cur.fetchone()
+        cur.execute('SELECT * FROM dc_income WHERE case_num = %s', (case_num,))
+        income_row = cur.fetchone()
+        income_data = dict(zip([desc[0] for desc in cur.description], income_row)) if income_row else None
 
         # Get children count
-        cur.execute('SELECT COUNT(*) FROM dc_childrens WHERE case_num = ?', (case_num,))
+        cur.execute('SELECT COUNT(*) FROM dc_childrens WHERE case_num = %s', (case_num,))
         children_count = cur.fetchone()[0]
 
         # Eligibility logic based on SSN (from your mapping)
-        ssn = case_data['ssn']
+        ssn = case_dict['ssn']
         ssn_rules = {
             '987654': {'eligible': True, 'plan': 'SNAP', 'amount': 5000},
             '001003': {'eligible': True, 'plan': 'CCAP', 'amount': 8000},
@@ -357,25 +422,26 @@ def api_check_eligibility(case_num):
             status = 'APPROVED' if result['eligible'] else 'DENIED'
             benefit_amt = result.get('amount', 0)
             denial_reason = None if result['eligible'] else result.get('reason')
-            plan_name = result.get('plan', case_data['plan_name'])
+            plan_name = result.get('plan', case_dict['plan_name'])
         else:
             # Default logic
             if income_data and (income_data['emp_income'] + income_data['property_income']) < 30000:
                 status = 'APPROVED'
                 benefit_amt = 500 + (children_count * 200)
                 denial_reason = None
-                plan_name = case_data['plan_name']
+                plan_name = case_dict['plan_name']
             else:
                 status = 'DENIED'
                 benefit_amt = 0
                 denial_reason = 'Income exceeds threshold'
-                plan_name = case_data['plan_name']
+                plan_name = case_dict['plan_name']
 
         # Save eligibility decision
         cur.execute('''
             INSERT INTO elig_dtls 
             (case_num, plan_name, plan_status, plan_start_date, plan_end_date, benefit_amt, denial_reason)
-            VALUES (?, ?, ?, DATE('now'), DATE('now', '+1 year'), ?, ?)
+            VALUES (%s, %s, %s, CURRENT_DATE, CURRENT_DATE + INTERVAL '1 year', %s, %s)
+            RETURNING elig_id
         ''', (case_num, plan_name, status, benefit_amt, denial_reason))
 
         # Create correspondence trigger
@@ -387,7 +453,8 @@ def api_check_eligibility(case_num):
 
         cur.execute('''
             INSERT INTO co_triggers (case_num, trg_status, notice)
-            VALUES (?, 'P', ?)
+            VALUES (%s, 'P', %s)
+            RETURNING trigger_id
         ''', (case_num, notice_text))
 
         conn.commit()
@@ -395,7 +462,7 @@ def api_check_eligibility(case_num):
         return jsonify({
             "success": True,
             "case_num": case_num,
-            "applicant": case_data['fullname'],
+            "applicant": case_dict['fullname'],
             "plan_name": plan_name,
             "status": status,
             "benefit_amount": benefit_amt,
@@ -433,10 +500,12 @@ def api_case_status_report():
         ORDER BY dc.case_num DESC
     ''')
 
-    cases = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    rows = cur.fetchall()
+    result = [dict(zip(columns, row)) for row in rows]
     conn.close()
 
-    return jsonify([dict(case) for case in cases])
+    return jsonify(result)
 
 @app.route('/api/reports/state-wise')
 def api_state_wise_report():
@@ -455,10 +524,12 @@ def api_state_wise_report():
         ORDER BY total_applications DESC
     ''')
 
-    report = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    rows = cur.fetchall()
+    result = [dict(zip(columns, row)) for row in rows]
     conn.close()
 
-    return jsonify([dict(row) for row in report])
+    return jsonify(result)
 
 @app.route('/api/reports/pending-triggers')
 def api_pending_triggers():
@@ -468,13 +539,13 @@ def api_pending_triggers():
 
     cur.execute('''
         SELECT 
-            ct.trg_id,
+            ct.trigger_id,
             ct.case_num,
             ca.fullname,
             ca.email,
             ct.trg_status,
             ct.create_date,
-            SUBSTR(ct.notice, 1, 100) as notice_preview
+            SUBSTRING(ct.notice, 1, 100) as notice_preview
         FROM co_triggers ct
         JOIN dc_cases dc ON ct.case_num = dc.case_num
         JOIN citizen_apps ca ON dc.app_id = ca.app_id
@@ -482,10 +553,12 @@ def api_pending_triggers():
         ORDER BY ct.create_date DESC
     ''')
 
-    triggers = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    rows = cur.fetchall()
+    result = [dict(zip(columns, row)) for row in rows]
     conn.close()
 
-    return jsonify([dict(trigger) for trigger in triggers])
+    return jsonify(result)
 
 # ================= UTILITY APIS =================
 
@@ -495,12 +568,13 @@ def api_get_citizen_by_ssn(ssn):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute('SELECT * FROM citizen_apps WHERE ssn = ?', (ssn,))
-    citizen = cur.fetchone()
+    cur.execute('SELECT * FROM citizen_apps WHERE ssn = %s', (ssn,))
+    row = cur.fetchone()
     conn.close()
 
-    if citizen:
-        return jsonify(dict(citizen))
+    if row:
+        columns = [desc[0] for desc in cur.description]
+        return jsonify(dict(zip(columns, row)))
     else:
         return jsonify({"error": "Citizen not found"}), 404
 
@@ -515,14 +589,16 @@ def api_get_cases_by_app(app_id):
         FROM dc_cases dc
         JOIN plan_master pm ON dc.plan_id = pm.plan_id
         JOIN citizen_apps ca ON dc.app_id = ca.app_id
-        WHERE dc.app_id = ?
+        WHERE dc.app_id = %s
         ORDER BY dc.case_num DESC
     ''', (app_id,))
 
-    cases = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    rows = cur.fetchall()
+    result = [dict(zip(columns, row)) for row in rows]
     conn.close()
 
-    return jsonify([dict(case) for case in cases])
+    return jsonify(result)
 
 @app.route('/api/get-case-details/<int:case_num>')
 def api_get_case_details(case_num):
@@ -537,68 +613,83 @@ def api_get_case_details(case_num):
         JOIN citizen_apps ca ON dc.app_id = ca.app_id
         JOIN plan_master pm ON dc.plan_id = pm.plan_id
         LEFT JOIN plan_category pc ON pm.plan_category_id = pc.category_id
-        WHERE dc.case_num = ?
+        WHERE dc.case_num = %s
     ''', (case_num,))
-    case_info = cur.fetchone()
+    case_row = cur.fetchone()
 
-    if not case_info:
+    if not case_row:
         conn.close()
         return jsonify({"error": "Case not found"}), 404
 
+    case_columns = [desc[0] for desc in cur.description]
+    case_info = dict(zip(case_columns, case_row))
+
     # Income data
-    cur.execute('SELECT * FROM dc_income WHERE case_num = ?', (case_num,))
-    income = cur.fetchone()
+    cur.execute('SELECT * FROM dc_income WHERE case_num = %s', (case_num,))
+    income_row = cur.fetchone()
+    income = dict(zip([desc[0] for desc in cur.description], income_row)) if income_row else None
 
     # Children data
-    cur.execute('SELECT * FROM dc_childrens WHERE case_num = ?', (case_num,))
-    children = cur.fetchall()
+    cur.execute('SELECT * FROM dc_childrens WHERE case_num = %s', (case_num,))
+    children_rows = cur.fetchall()
+    children_columns = [desc[0] for desc in cur.description]
+    children = [dict(zip(children_columns, row)) for row in children_rows]
 
     # Education data
-    cur.execute('SELECT * FROM dc_education WHERE case_num = ?', (case_num,))
-    education = cur.fetchone()
+    cur.execute('SELECT * FROM dc_education WHERE case_num = %s', (case_num,))
+    edu_row = cur.fetchone()
+    education = dict(zip([desc[0] for desc in cur.description], edu_row)) if edu_row else None
 
     # Eligibility data
-    cur.execute('SELECT * FROM elig_dtls WHERE case_num = ? ORDER BY create_date DESC LIMIT 1', (case_num,))
-    eligibility = cur.fetchone()
+    cur.execute('SELECT * FROM elig_dtls WHERE case_num = %s ORDER BY create_date DESC LIMIT 1', (case_num,))
+    elig_row = cur.fetchone()
+    eligibility = dict(zip([desc[0] for desc in cur.description], elig_row)) if elig_row else None
 
     conn.close()
 
     response = {
-        "case_info": dict(case_info),
-        "income": dict(income) if income else None,
-        "children": [dict(child) for child in children],
-        "education": dict(education) if education else None,
-        "eligibility": dict(eligibility) if eligibility else None
+        "case_info": case_info,
+        "income": income,
+        "children": children,
+        "education": education,
+        "eligibility": eligibility
     }
 
     return jsonify(response)
+
 @app.route('/debug/all-tables')
 def debug_all_tables():
     """Debug endpoint to see all tables and their data"""
     conn = get_db()
     cur = conn.cursor()
     
-    # Get all tables
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+    # Get all tables from PostgreSQL
+    cur.execute("""
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+        ORDER BY table_name
+    """)
     tables = cur.fetchall()
     
     result = {}
     
     for table in tables:
-        table_name = table['name']
+        table_name = table[0]
         
         # Get row count
         cur.execute(f'SELECT COUNT(*) as count FROM {table_name}')
-        count = cur.fetchone()['count']
+        count = cur.fetchone()[0]
         
         # Get sample data (first 5 rows)
         cur.execute(f'SELECT * FROM {table_name} LIMIT 5')
         rows = cur.fetchall()
+        columns = [desc[0] for desc in cur.description] if cur.description else []
         
         result[table_name] = {
             'row_count': count,
-            'columns': [description[0] for description in cur.description] if cur.description else [],
-            'sample_data': [dict(row) for row in rows]
+            'columns': columns,
+            'sample_data': [dict(zip(columns, row)) for row in rows]
         }
     
     conn.close()
@@ -642,7 +733,8 @@ def citizen_register():
             cur.execute('''
                 INSERT INTO citizen_apps 
                 (fullname, email, phno, ssn, gender, state_name, create_date)
-                VALUES (?, ?, ?, ?, ?, ?, DATE('now'))
+                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE)
+                RETURNING app_id
             ''', (
                 fullname,
                 email,
@@ -652,13 +744,18 @@ def citizen_register():
                 state_name
             ))
             
-            app_id = cur.lastrowid
+            app_id = cur.fetchone()[0]
             conn.commit()
             flash(f'✅ Application submitted! Your Application ID: {app_id}', 'success')
             return redirect(f'/application/{app_id}/status')
 
-        except sqlite3.IntegrityError:
-            flash('❌ SSN already registered!', 'danger')
+        except psycopg2.IntegrityError as e:
+            if 'ssn' in str(e).lower():
+                flash('❌ SSN already registered!', 'danger')
+            else:
+                flash('❌ Email already registered!', 'danger')
+        except Exception as e:
+            flash(f'❌ Error: {str(e)}', 'danger')
         finally:
             conn.close()
     
@@ -669,14 +766,17 @@ def application_status(app_id):
     conn = get_db()
     cur = conn.cursor()
     
-    cur.execute('SELECT * FROM citizen_apps WHERE app_id = ?', (app_id,))
-    application = cur.fetchone()
+    cur.execute('SELECT * FROM citizen_apps WHERE app_id = %s', (app_id,))
+    row = cur.fetchone()
     
-    if not application:
+    if not row:
         conn.close()
         return "Application not found"
     
+    columns = [desc[0] for desc in cur.description]
+    application = dict(zip(columns, row))
     conn.close()
+    
     return render_template('public/status.html', application=application)
 
 
@@ -711,13 +811,15 @@ def login():
         
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM case_worker_accts WHERE email = ? AND pwd = ?', 
+        cur.execute('SELECT * FROM case_worker_accts WHERE email = %s AND pwd = %s', 
                    (email, password))
-        user = cur.fetchone()
+        row = cur.fetchone()
         conn.close()
         
-        if user:
-            session['user_id'] = user['acc_id']
+        if row:
+            columns = [desc[0] for desc in cur.description]
+            user = dict(zip(columns, row))
+            session['user_id'] = user['worker_id']
             session['user_name'] = user['fullname']
             session['user_email'] = user['email']
             session['user_role'] = 'ADMIN' if user['email'] == 'admin@his.gov' else 'CASEWORKER'
@@ -780,14 +882,16 @@ def plan_category():
         
         cur.execute('''
             INSERT INTO plan_category (category_name, active_sw, created_by, create_date)
-            VALUES (?, ?, ?, DATE('now'))
+            VALUES (%s, %s, %s, CURRENT_DATE)
         ''', (category_name, active_sw, session['user_name']))
         conn.commit()
         flash('✅ Plan category added successfully!', 'success')
         return redirect('/admin/plan-category')
     
     cur.execute('SELECT * FROM plan_category ORDER BY create_date DESC')
-    categories = cur.fetchall()
+    rows = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    categories = [dict(zip(columns, row)) for row in rows]
     conn.close()
     
     return render_template('admin/plan-category.html', categories=categories)
@@ -804,7 +908,8 @@ def plan_master():
         cur.execute('''
             INSERT INTO plan_master 
             (plan_name, plan_start_date, plan_end_date, plan_category_id, created_by, create_date)
-            VALUES (?, ?, ?, ?, ?, DATE('now'))
+            VALUES (%s, %s, %s, %s, %s, CURRENT_DATE)
+            RETURNING plan_id
         ''', (
             request.form['plan_name'],
             request.form['plan_start_date'],
@@ -823,11 +928,14 @@ def plan_master():
         LEFT JOIN plan_category pc ON pm.plan_category_id = pc.category_id
         ORDER BY pm.create_date DESC
     ''')
-    plans = cur.fetchall()
+    rows = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    plans = [dict(zip(columns, row)) for row in rows]
     
     # Get categories for dropdown
-    cur.execute('SELECT category_id, category_name FROM plan_category WHERE active_sw = "Y"')
-    categories = cur.fetchall()
+    cur.execute('SELECT category_id, category_name FROM plan_category WHERE active_sw = %s', ('Y',))
+    cat_rows = cur.fetchall()
+    categories = [dict(zip([desc[0] for desc in cur.description], row)) for row in cat_rows]
     
     conn.close()
     
@@ -884,18 +992,19 @@ def admin_caseworkers():
             cur.execute('''
                 INSERT INTO case_worker_accts
                 (fullname, email, pwd, phno, gender, ssn, dob, created_by, create_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE('now'))
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE)
+                RETURNING worker_id
             ''', (fullname, email, pwd, phno, gender, ssn, dob, session.get('user_name', 'SYSTEM')))
+            new_id = cur.fetchone()[0]
             conn.commit()
 
             # Respond differently for AJAX requests
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
-                new_id = cur.lastrowid
-                return jsonify({'success': True, 'message': 'Caseworker added', 'acc_id': new_id}), 201
+                return jsonify({'success': True, 'message': 'Caseworker added', 'worker_id': new_id}), 201
 
             flash('✅ Caseworker added successfully!', 'success')
             return redirect('/admin/caseworkers')
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError as e:
             msg = '❌ Email or SSN already exists!'
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
                 return jsonify({'success': False, 'message': msg}), 400
@@ -907,7 +1016,9 @@ def admin_caseworkers():
             flash(msg, 'danger')
 
     cur.execute('SELECT * FROM case_worker_accts ORDER BY create_date DESC')
-    workers = cur.fetchall()
+    rows = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    workers = [dict(zip(columns, row)) for row in rows]
     conn.close()
     
     return render_template('admin/caseworkers.html', workers=workers)
@@ -925,10 +1036,10 @@ def caseworker_dashboard():
     cur.execute('SELECT COUNT(*) FROM citizen_apps')
     total_apps = cur.fetchone()[0]
     
-    cur.execute('SELECT COUNT(*) FROM citizen_apps WHERE DATE(create_date) = DATE("now")')
+    cur.execute('SELECT COUNT(*) FROM citizen_apps WHERE DATE(create_date) = CURRENT_DATE')
     today_apps = cur.fetchone()[0]
     
-    cur.execute('SELECT COUNT(*) FROM citizen_apps WHERE state_name = "New York"')
+    cur.execute('SELECT COUNT(*) FROM citizen_apps WHERE state_name = %s', ('New York',))
     ny_apps = cur.fetchone()[0]
     
     conn.close()
@@ -946,7 +1057,9 @@ def caseworker_applications():
     conn = get_db()
     cur = conn.cursor()
     cur.execute('SELECT * FROM citizen_apps ORDER BY create_date DESC')
-    applications = cur.fetchall()
+    rows = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    applications = [dict(zip(columns, row)) for row in rows]
     conn.close()
     
     return render_template('caseworker/applications.html', applications=applications)
@@ -964,12 +1077,15 @@ def data_collection(app_id):
     
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('SELECT * FROM citizen_apps WHERE app_id = ?', (app_id,))
-    application = cur.fetchone()
+    cur.execute('SELECT * FROM citizen_apps WHERE app_id = %s', (app_id,))
+    row = cur.fetchone()
     conn.close()
     
-    if not application:
+    if not row:
         return "Application not found"
+    
+    columns = [desc[0] for desc in cur.description]
+    application = dict(zip(columns, row))
     
     return render_template('caseworker/data-collection.html', application=application)
 
@@ -983,12 +1099,15 @@ def check_eligibility(app_id):
     cur = conn.cursor()
     
     # Get application
-    cur.execute('SELECT * FROM citizen_apps WHERE app_id = ?', (app_id,))
-    application = cur.fetchone()
+    cur.execute('SELECT * FROM citizen_apps WHERE app_id = %s', (app_id,))
+    row = cur.fetchone()
     
-    if not application:
+    if not row:
         conn.close()
         return "Application not found"
+    
+    columns = [desc[0] for desc in cur.description]
+    application = dict(zip(columns, row))
     
     # Simple eligibility logic based on state
     state = application['state_name']
@@ -1022,12 +1141,15 @@ def generate_notice(app_id):
     
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('SELECT * FROM citizen_apps WHERE app_id = ?', (app_id,))
-    application = cur.fetchone()
+    cur.execute('SELECT * FROM citizen_apps WHERE app_id = %s', (app_id,))
+    row = cur.fetchone()
     conn.close()
     
-    if not application:
+    if not row:
         return "Application not found"
+    
+    columns = [desc[0] for desc in cur.description]
+    application = dict(zip(columns, row))
     
     # Create PDF notice
     buffer = io.BytesIO()
@@ -1114,10 +1236,12 @@ def api_plan_categories():
     conn = get_db()
     cur = conn.cursor()
     cur.execute('SELECT * FROM plan_category')
-    categories = cur.fetchall()
+    rows = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    categories = [dict(zip(columns, row)) for row in rows]
     conn.close()
     
-    return jsonify([dict(cat) for cat in categories])
+    return jsonify(categories)
 
 @app.route('/api/admin/plan-category', methods=['POST'])
 def api_create_plan_category():
@@ -1127,7 +1251,8 @@ def api_create_plan_category():
     
     cur.execute('''
         INSERT INTO plan_category (category_name, active_sw, create_date)
-        VALUES (?, 'Y', DATE('now'))
+        VALUES (%s, 'Y', CURRENT_DATE)
+        RETURNING category_id
     ''', (data['category_name'],))
     
     conn.commit()
@@ -1145,7 +1270,7 @@ def debug_db():
     
     for table in tables:
         cur.execute(f'SELECT COUNT(*) as count FROM {table}')
-        result[table] = cur.fetchone()['count']
+        result[table] = cur.fetchone()[0]
     
     conn.close()
     return jsonify(result)
@@ -1154,11 +1279,15 @@ def debug_db():
 def debug_tables():
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    cur.execute("""
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+    """)
     tables = cur.fetchall()
     conn.close()
     
-    return jsonify([dict(table) for table in tables])
+    return jsonify([table[0] for table in tables])
 
 # ================= INITIALIZATION =================
 with app.app_context():
