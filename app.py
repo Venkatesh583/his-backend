@@ -1337,8 +1337,8 @@ def debug_tables():
     return jsonify([table[0] for table in tables])
 
 # ================= INITIALIZATION =================
-with app.app_context():
-    init_tables()
+#with app.app_context():
+ #   init_tables()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
