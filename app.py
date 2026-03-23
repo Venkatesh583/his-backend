@@ -33,45 +33,49 @@ def get_db():
 
 def init_tables():
     """Create all tables"""
-    conn = get_db()
-    cur = conn.cursor()
-    
-    # Create citizen_apps table
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS citizen_apps (
-            app_id SERIAL PRIMARY KEY,
-            fullname VARCHAR(200) NOT NULL,
-            email VARCHAR(100),
-            phno VARCHAR(20),
-            ssn VARCHAR(20) UNIQUE,
-            gender CHAR(1),
-            state_name VARCHAR(100),
-            create_date DATE DEFAULT CURRENT_DATE,
-            update_date DATE,
-            created_by VARCHAR(50)
-        )
-    ''')
-    
-    conn.commit()
-    print("✅ citizen_apps table created")
-    
-    # Insert sample data if empty
-    cur.execute("SELECT COUNT(*) FROM citizen_apps")
-    if cur.fetchone()[0] == 0:
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Create citizen_apps table
         cur.execute('''
-            INSERT INTO citizen_apps (fullname, email, phno, ssn, gender, state_name, created_by)
-            VALUES 
-            ('Robert Brown', 'robert@email.com', '555-1234', '987-65-4321', 'M', 'New York', 'SYSTEM'),
-            ('Alice Green', 'alice@email.com', '555-5678', '001-00-3003', 'F', 'Rhode Island', 'SYSTEM'),
-            ('Mike Wilson', 'mike@email.com', '555-9012', '343-43-4343', 'M', 'California', 'SYSTEM'),
-            ('Lisa Taylor', 'lisa@email.com', '555-3456', '268-30-2002', 'F', 'Ohio', 'SYSTEM'),
-            ('David Miller', 'david@email.com', '555-7890', '135-15-8158', 'M', 'New Jersey', 'SYSTEM')
+            CREATE TABLE IF NOT EXISTS citizen_apps (
+                app_id SERIAL PRIMARY KEY,
+                fullname VARCHAR(200) NOT NULL,
+                email VARCHAR(100),
+                phno VARCHAR(20),
+                ssn VARCHAR(20) UNIQUE,
+                gender CHAR(1),
+                state_name VARCHAR(100),
+                create_date DATE DEFAULT CURRENT_DATE,
+                update_date DATE,
+                created_by VARCHAR(50)
+            )
         ''')
+        
+        # Check if data exists
+        cur.execute("SELECT COUNT(*) FROM citizen_apps")
+        count = cur.fetchone()[0]
+        
+        if count == 0:
+            cur.execute('''
+                INSERT INTO citizen_apps (fullname, email, phno, ssn, gender, state_name, created_by)
+                VALUES 
+                ('Robert Brown', 'robert@email.com', '555-1234', '987-65-4321', 'M', 'New York', 'SYSTEM'),
+                ('Alice Green', 'alice@email.com', '555-5678', '001-00-3003', 'F', 'Rhode Island', 'SYSTEM'),
+                ('Mike Wilson', 'mike@email.com', '555-9012', '343-43-4343', 'M', 'California', 'SYSTEM'),
+                ('Lisa Taylor', 'lisa@email.com', '555-3456', '268-30-2002', 'F', 'Ohio', 'SYSTEM'),
+                ('David Miller', 'david@email.com', '555-7890', '135-15-8158', 'M', 'New Jersey', 'SYSTEM')
+            ''')
+        
         conn.commit()
-        print("✅ Sample data inserted")
-    
-    cur.close()
-    conn.close()    
+        print("✅ citizen_apps table ready")
+        
+        cur.close()
+        conn.close()
+        
+    except Exception as e:
+        print(f"❌ Error in init_tables: {e}")    
     # Table-1: PLAN_CATEGORY
     cur.execute('''
         CREATE TABLE IF NOT EXISTS public.plan_category (
