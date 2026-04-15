@@ -2,6 +2,6 @@ Flask==3.1.0
 psycopg2-binary==2.9.10
 gunicorn==23.0.0
 reportlab==4.2.5
-pytesseract==0.3.12
+pytesseract==0.3.13
 Pillow==10.0.1
 openai==1.0.0
