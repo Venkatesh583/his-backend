@@ -863,6 +863,8 @@ def login():
 
 @app.route('/apply', methods=['POST', 'GET'])
 @app.route('/apply/', methods=['POST', 'GET'])
+@app.route('/create-application', methods=['POST', 'GET'])
+@app.route('/create-application/', methods=['POST', 'GET'])
 def apply():
     if request.method == 'GET':
         return redirect('/public/register')
