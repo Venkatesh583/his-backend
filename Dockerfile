@@ -13,4 +13,4 @@ COPY . .
 ENV PORT 8080
 EXPOSE 8080
 
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "app:app"]
+CMD ["sh", "-c", "gunicorn -w 4 -b 0.0.0.0:$PORT app:app"]
