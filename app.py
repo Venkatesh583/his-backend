@@ -40,19 +40,30 @@ def handle_exception(e):
 
 def get_db():
     """Get PostgreSQL connection"""
+    database_url = os.environ.get('DATABASE_URL') or os.environ.get('PGDATABASE_URL')
+    sslmode = os.environ.get('DB_SSLMODE', 'prefer')
+
     try:
-        # Use environment variables from Render
+        if database_url:
+            return psycopg2.connect(database_url, sslmode=sslmode)
+
+        db_host = os.environ.get('DB_HOST')
+        if not db_host:
+            raise ValueError(
+                'Database connection settings are missing. Set DATABASE_URL or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD.'
+            )
+
         conn = psycopg2.connect(
-            host=os.environ.get('DB_HOST', 'localhost'),
+            host=db_host,
             port=int(os.environ.get('DB_PORT', 5432)),
             database=os.environ.get('DB_NAME', 'his_db'),
             user=os.environ.get('DB_USER', 'postgres'),
             password=os.environ.get('DB_PASSWORD', ''),
-            sslmode=os.environ.get('DB_SSLMODE', 'prefer')
+            sslmode=sslmode
         )
         return conn
     except Exception as e:
-        print(f"Database connection error: {e}")
+        app.logger.error(f"Database connection error: {e}")
         raise
 
 
