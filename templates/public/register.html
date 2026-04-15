@@ -20,48 +20,45 @@
       {% endif %}
     {% endwith %}
 
-    <form id="public-register" method="POST" action="/public/register">
-
-        <input type="text" name="fullname" id="fullname" placeholder="Full Name" required>
-
-        <input type="text" name="phno" id="phno" placeholder="Phone">
-
-        <input type="text" name="email" id="email" placeholder="Email">
-
-        <input type="text" name="ssn" id="ssn" placeholder="SSN" required>
-
-        <select name="gender" id="gender">
-            <option value="M">Male</option>
-            <option value="F">Female</option>
-        </select>
-
-        <input type="text" name="state_name" id="state_name" placeholder="State" value="New York">
+    <form id="public-register" action="{{ url_for('apply') }}" method="POST" onsubmit="submitApplication(event)">
+        <input type="text" id="name" name="name" placeholder="Full Name" required>
+        <input type="number" id="age" name="age" placeholder="Age" min="0" required>
+        <input type="number" id="income" name="income" placeholder="Income" min="0" step="0.01" required>
+        <input type="number" id="family_size" name="family_size" placeholder="Family Size" min="1" required>
 
         <div id="form-error" class="form-error" aria-live="polite"></div>
+        <div id="apply-result" class="apply-result" aria-live="polite"></div>
 
         <button type="submit">Submit Application</button>
-
     </form>
 
     <script>
     (function(){
         const form = document.getElementById('public-register');
         const err = document.getElementById('form-error');
-        function validateEmail(email){ return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email); }
         form.addEventListener('submit', function(e){
             err.innerText = '';
-            const full = form.fullname.value.trim();
-            const email = form.email.value.trim();
-            const ssn = form.ssn.value.trim();
-            const ph = form.phno.value.trim();
+            const name = form.name.value.trim();
+            const age = parseInt(form.age.value, 10);
+            const income = parseFloat(form.income.value);
+            const family_size = parseInt(form.family_size.value, 10);
 
-            if(!full){ err.innerText = 'Full name is required'; err.style.color='red'; e.preventDefault(); return; }
-            if(email && !validateEmail(email)){ err.innerText = 'Enter a valid email'; err.style.color='red'; e.preventDefault(); return; }
-            if(!ssn || ssn.length < 3){ err.innerText = 'Enter a valid SSN'; err.style.color='red'; e.preventDefault(); return; }
-            if(ph && !/^[0-9+\- ]{6,20}$/.test(ph)){ err.innerText = 'Phone number looks invalid'; err.style.color='red'; e.preventDefault(); return; }
+            if (!name) {
+                err.innerText = 'Full name is required'; err.style.color='red'; e.preventDefault(); return;
+            }
+            if (isNaN(age) || age < 0) {
+                err.innerText = 'Enter a valid age'; err.style.color='red'; e.preventDefault(); return;
+            }
+            if (isNaN(income) || income < 0) {
+                err.innerText = 'Enter a valid income'; err.style.color='red'; e.preventDefault(); return;
+            }
+            if (isNaN(family_size) || family_size < 1) {
+                err.innerText = 'Enter a valid family size'; err.style.color='red'; e.preventDefault(); return;
+            }
         });
     })();
     </script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </div>
 
 </body>

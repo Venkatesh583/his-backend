@@ -861,8 +861,12 @@ def login():
 
     return render_template('auth/login.html')
 
-@app.route('/apply', methods=['POST'])
+@app.route('/apply', methods=['POST', 'GET'])
+@app.route('/apply/', methods=['POST', 'GET'])
 def apply():
+    if request.method == 'GET':
+        return redirect('/public/register')
+
     if request.is_json:
         data = request.get_json() or {}
         name = data.get('name', '').strip()
