@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, send_file, jsonify, session, flash
+import logging
 import psycopg2
 import os
 import io
@@ -25,6 +26,15 @@ app.secret_key = os.environ.get('SECRET_KEY', 'health_insurance_system_2025')
 app.config['SESSION_TYPE'] = 'filesystem'
 UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+logging.basicConfig(level=logging.INFO)
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    app.logger.exception('Unhandled exception during request')
+    return jsonify({
+        'error': 'Internal server error',
+        'details': str(e)
+    }), 500
 
 # ================= DATABASE CONFIG =================
 
