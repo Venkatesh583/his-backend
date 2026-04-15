@@ -919,8 +919,8 @@ def apply():
             'id': app_id
         })
 
-    flash('Application submitted successfully!', 'success')
-    return redirect('/caseworker/dashboard')
+    flash(f'Application submitted successfully! AI Decision: {status}. Reason: {ai_reason}', 'success')
+    return redirect('/public/register')
 
 @app.route('/upload-document', methods=['POST'])
 def upload_document():
@@ -967,7 +967,10 @@ def upload_document():
         cur.close()
         conn.close()
 
-    return jsonify({'message': 'Document uploaded successfully'})
+    return jsonify({
+        'message': 'Document uploaded successfully',
+        'ai_summary': ai_summary
+    })
 
 @app.route('/documents', methods=['GET'])
 def get_documents():

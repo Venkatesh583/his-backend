@@ -10,14 +10,41 @@
     <div class="sidebar">
         <h2>Case Worker</h2>
         <a href="/caseworker/dashboard">Dashboard</a>
-        <a href="/create-application">Create Application</a>
+        <a href="/public/register">Create Application</a>
         <a href="/caseworker/applications">Application List</a>
     </div>
 
     <div class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for cat, msg in messages %}
+              <div class="flash {{ cat }}">{{ msg }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
         <h1>Welcome, Case Worker!</h1>
         <div class="card">Total Applications: {{ total_apps }}</div>
         <div class="card">Today: {{ today_apps }}</div>
+
+        <section id="pending-applications-section">
+            <h2>Pending Applications</h2>
+            <div id="pending-error" class="error" aria-live="polite"></div>
+            <div id="pending-applications-list">Loading pending applications...</div>
+        </section>
+
+        <section id="document-verification-section">
+            <h2>Document Verification</h2>
+            <div id="document-error" class="error" aria-live="polite"></div>
+            <form id="document-upload-form" enctype="multipart/form-data">
+                <input type="text" id="document-name" name="name" placeholder="Document Name" required>
+                <input type="file" id="document-file" name="file" accept=".pdf,.jpg,.png,.jpeg,.txt">
+                <button type="submit">Upload Document</button>
+            </form>
+            <div id="upload-success" class="success" aria-live="polite"></div>
+            <div id="documents-list">Loading documents...</div>
+        </section>
     </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
