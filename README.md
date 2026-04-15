@@ -11,7 +11,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Open http://127.0.0.1:8080/ in your browser.
+Open `http://127.0.0.1:8080/` in your browser for local testing, or use your deployed public URL after deployment.
 
 Admin login: `admin@his.gov` / `admin123` (change in production)
 

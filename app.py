@@ -6,38 +6,103 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from datetime import datetime
 
+try:
+    import pytesseract
+    from PIL import Image
+except ImportError:
+    pytesseract = None
+    Image = None
+
+try:
+    from openai import OpenAI
+    openai_api_key = os.environ.get('OPENAI_API_KEY')
+    client = OpenAI(api_key=openai_api_key) if openai_api_key else None
+except Exception:
+    client = None
+
 app = Flask(__name__)
-app.secret_key = "health_insurance_system_2025"
+app.secret_key = os.environ.get('SECRET_KEY', 'health_insurance_system_2025')
 app.config['SESSION_TYPE'] = 'filesystem'
+UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ================= DATABASE CONFIG =================
-
-import os
 
 def get_db():
     """Get PostgreSQL connection"""
     try:
         # Use environment variables from Render
         conn = psycopg2.connect(
-            host=os.environ.get('DB_HOST', 'dpg-d702i27kijhs73d5c280-a.oregon-postgres.render.com'),
-            port=os.environ.get('DB_PORT', 5432),
-            database=os.environ.get('DB_NAME', 'his_db_fefp'),
-            user=os.environ.get('DB_USER', 'his_user'),
-            password=os.environ.get('DB_PASSWORD', '4iR6UV9XMeCZF8x0dKuMfzRMIkAahBs5'),
-            sslmode='require'
+            host=os.environ.get('DB_HOST', 'localhost'),
+            port=int(os.environ.get('DB_PORT', 5432)),
+            database=os.environ.get('DB_NAME', 'his_db'),
+            user=os.environ.get('DB_USER', 'postgres'),
+            password=os.environ.get('DB_PASSWORD', ''),
+            sslmode=os.environ.get('DB_SSLMODE', 'prefer')
         )
         return conn
     except Exception as e:
         print(f"Database connection error: {e}")
         raise
 
-def init_tables():
-    """Create all tables"""
+
+def get_ai_recommendation(age, income, family_size):
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        
-        # Table: case_worker_accts
+        age_val = int(age)
+        income_val = float(income)
+        family_val = int(family_size)
+    except Exception:
+        return 'Pending', 'No AI explanation available.'
+
+    if income_val < 200000:
+        return (
+            'Approved',
+            f'AI recommendation: approve based on income under threshold. Age: {age_val}, family size: {family_val}.'
+        )
+
+    return (
+        'Rejected',
+        f'AI recommendation: reject because income is at or above threshold. Age: {age_val}, family size: {family_val}.'
+    )
+
+
+def analyze_document(text):
+    if not text:
+        return 'AI analysis unavailable. Using fallback summary.'
+
+    if client is None:
+        return 'AI analysis unavailable. Using fallback summary.'
+
+    try:
+        prompt = f"""
+You are a document verification assistant.
+
+Analyze the following document text and return:
+
+1. Summary (2-3 lines)
+2. Missing or suspicious information (if any)
+
+Document:
+{text}
+
+Respond in simple plain text.
+"""
+        response = client.responses.create(
+            model='gpt-5.4',
+            input=prompt
+        )
+        if hasattr(response, 'output_text') and response.output_text:
+            return response.output_text
+        return str(response)
+    except Exception:
+        return 'AI analysis unavailable. Using fallback summary.'
+
+
+def init_tables():
+    """Create all required tables and seed defaults."""
+    conn = get_db()
+    cur = conn.cursor()
+    try:
         cur.execute('''
             CREATE TABLE IF NOT EXISTS case_worker_accts (
                 worker_id SERIAL PRIMARY KEY,
@@ -55,8 +120,7 @@ def init_tables():
                 updated_by VARCHAR(50)
             )
         ''')
-        
-        # Table: citizen_apps
+
         cur.execute('''
             CREATE TABLE IF NOT EXISTS citizen_apps (
                 app_id SERIAL PRIMARY KEY,
@@ -71,8 +135,124 @@ def init_tables():
                 created_by VARCHAR(50)
             )
         ''')
-        
-        # Insert default case workers
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS applications (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                age INTEGER NOT NULL,
+                income NUMERIC(12,2) NOT NULL,
+                family_size INTEGER NOT NULL,
+                status VARCHAR(20) DEFAULT 'Pending',
+                ai_decision VARCHAR(50),
+                ai_reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Ensure existing databases have the updated_at column
+        cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS plan_category (
+                category_id SERIAL PRIMARY KEY,
+                category_name VARCHAR(100) NOT NULL,
+                active_sw CHAR(1) DEFAULT 'Y',
+                create_date DATE DEFAULT CURRENT_DATE,
+                update_date DATE,
+                created_by VARCHAR(50),
+                updated_by VARCHAR(50)
+            )
+        ''')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS plan_master (
+                plan_id SERIAL PRIMARY KEY,
+                plan_name VARCHAR(100) NOT NULL,
+                plan_start_date DATE,
+                plan_end_date DATE,
+                plan_category_id INTEGER REFERENCES plan_category(category_id),
+                active_sw CHAR(1) DEFAULT 'Y',
+                create_date DATE DEFAULT CURRENT_DATE,
+                update_date DATE,
+                created_by VARCHAR(50),
+                updated_by VARCHAR(50)
+            )
+        ''')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS documents (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100),
+                file_path TEXT,
+                extracted_text TEXT,
+                ai_summary TEXT,
+                status VARCHAR(20),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS dc_cases (
+                case_id SERIAL PRIMARY KEY,
+                case_num INTEGER UNIQUE NOT NULL,
+                app_id INTEGER REFERENCES citizen_apps(app_id),
+                plan_id INTEGER REFERENCES plan_master(plan_id)
+            )
+        ''')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS dc_income (
+                income_id SERIAL PRIMARY KEY,
+                case_num INTEGER REFERENCES dc_cases(case_num),
+                emp_income DECIMAL(10,2) DEFAULT 0,
+                property_income DECIMAL(10,2) DEFAULT 0
+            )
+        ''')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS dc_childrens (
+                child_id SERIAL PRIMARY KEY,
+                case_num INTEGER REFERENCES dc_cases(case_num),
+                children_dob DATE NOT NULL,
+                children_ssn VARCHAR(20)
+            )
+        ''')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS dc_education (
+                edu_id SERIAL PRIMARY KEY,
+                case_num INTEGER REFERENCES dc_cases(case_num),
+                highest_qualification VARCHAR(100),
+                graduation_year INTEGER
+            )
+        ''')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS elig_dtls (
+                elig_id SERIAL PRIMARY KEY,
+                case_num INTEGER REFERENCES dc_cases(case_num),
+                plan_name VARCHAR(100) NOT NULL,
+                plan_status VARCHAR(20) NOT NULL,
+                plan_start_date DATE,
+                plan_end_date DATE,
+                benefit_amt DECIMAL(10,2),
+                denial_reason VARCHAR(500),
+                create_date DATE DEFAULT CURRENT_DATE
+            )
+        ''')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS co_triggers (
+                trigger_id SERIAL PRIMARY KEY,
+                case_num INTEGER REFERENCES dc_cases(case_num),
+                trg_status CHAR(1) DEFAULT 'P',
+                notice TEXT,
+                create_date DATE DEFAULT CURRENT_DATE,
+                update_date DATE
+            )
+        ''')
+
         cur.execute("SELECT COUNT(*) FROM case_worker_accts")
         if cur.fetchone()[0] == 0:
             cur.execute('''
@@ -81,8 +261,7 @@ def init_tables():
                 ('Admin User', 'admin@his.gov', 'admin123', '9876543210', 'M', '987654', '1990-01-01', 'SYSTEM'),
                 ('Case Worker 1', 'worker1@his.gov', 'worker123', '9876543211', 'F', '001003', '1992-05-15', 'SYSTEM')
             ''')
-        
-        # Insert sample citizen data if empty
+
         cur.execute("SELECT COUNT(*) FROM citizen_apps")
         if cur.fetchone()[0] == 0:
             cur.execute('''
@@ -91,254 +270,43 @@ def init_tables():
                 ('Robert Brown', 'robert@email.com', '555-1234', '987-65-4321', 'M', 'New York', 'SYSTEM'),
                 ('Alice Green', 'alice@email.com', '555-5678', '001-00-3003', 'F', 'Rhode Island', 'SYSTEM')
             ''')
-        
+
+        cur.execute("SELECT COUNT(*) FROM plan_category")
+        if cur.fetchone()[0] == 0:
+            categories = ['SNAP', 'CCAP', 'Medicaid', 'Medicare', 'QHP']
+            for cat in categories:
+                cur.execute('''
+                    INSERT INTO plan_category (category_name, created_by)
+                    VALUES (%s, %s)
+                ''', (cat, 'SYSTEM'))
+
+        cur.execute("SELECT COUNT(*) FROM plan_master")
+        if cur.fetchone()[0] == 0:
+            cur.execute("SELECT category_id FROM plan_category WHERE category_name = 'SNAP'")
+            snap_id = cur.fetchone()
+            cur.execute("SELECT category_id FROM plan_category WHERE category_name = 'Medicaid'")
+            medicaid_id = cur.fetchone()
+            if snap_id:
+                cur.execute('''
+                    INSERT INTO plan_master 
+                    (plan_name, plan_start_date, plan_end_date, plan_category_id, created_by)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', ('SNAP Benefits', '2024-01-01', '2024-12-31', snap_id[0], 'SYSTEM'))
+            if medicaid_id:
+                cur.execute('''
+                    INSERT INTO plan_master 
+                    (plan_name, plan_start_date, plan_end_date, plan_category_id, created_by)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', ('Medicaid Basic', '2024-01-01', '2024-12-31', medicaid_id[0], 'SYSTEM'))
+
         conn.commit()
         print("✅ All tables created")
-        cur.close()
-        conn.close()
-        
     except Exception as e:
         print(f"❌ Error in init_tables: {e}")
-    # Table-1: PLAN_CATEGORY
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.plan_category (
-            category_id SERIAL PRIMARY KEY,
-            category_name VARCHAR(100) NOT NULL,
-            active_sw CHAR(1) DEFAULT 'Y',
-            create_date DATE DEFAULT CURRENT_DATE,
-            update_date DATE,
-            created_by VARCHAR(50),
-            updated_by VARCHAR(50)
-        )
-    ''')
-    
-    # Table-2: PLAN_MASTER
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.plan_master (
-            plan_id SERIAL PRIMARY KEY,
-            plan_name VARCHAR(100) NOT NULL,
-            plan_start_date DATE,
-            plan_end_date DATE,
-            plan_category_id INTEGER REFERENCES public.plan_category(category_id),
-            active_sw CHAR(1) DEFAULT 'Y',
-            create_date DATE DEFAULT CURRENT_DATE,
-            update_date DATE,
-            created_by VARCHAR(50),
-            updated_by VARCHAR(50)
-        )
-    ''')
-    
-    # Table-3: CASE_WORKER_ACCTS
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.case_worker_accts (
-            worker_id SERIAL PRIMARY KEY,
-            fullname VARCHAR(100) NOT NULL,
-            email VARCHAR(100) UNIQUE,
-            pwd VARCHAR(100),
-            phno VARCHAR(15),
-            gender CHAR(1),
-            ssn VARCHAR(20) UNIQUE,
-            dob DATE,
-            active_sw CHAR(1) DEFAULT 'Y',
-            create_date DATE DEFAULT CURRENT_DATE,
-            update_date DATE,
-            created_by VARCHAR(50),
-            updated_by VARCHAR(50)
-        )
-    ''')
-    
-    # Table-4: CITIZEN_APPS (main table)
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.citizen_apps (
-            app_id SERIAL PRIMARY KEY,
-            fullname VARCHAR(200) NOT NULL,
-            email VARCHAR(100),
-            phno VARCHAR(20),
-            ssn VARCHAR(20) UNIQUE,
-            gender CHAR(1),
-            state_name VARCHAR(100),
-            create_date DATE DEFAULT CURRENT_DATE,
-            update_date DATE,
-            created_by VARCHAR(50)
-        )
-    ''')
-    
-    # Table-5: DC_CASES
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.dc_cases (
-            case_id SERIAL PRIMARY KEY,
-            case_num INTEGER UNIQUE NOT NULL,
-            app_id INTEGER REFERENCES public.citizen_apps(app_id),
-            plan_id INTEGER REFERENCES public.plan_master(plan_id)
-        )
-    ''')
-    
-    # Table-6: DC_INCOME
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.dc_income (
-            income_id SERIAL PRIMARY KEY,
-            case_num INTEGER REFERENCES public.dc_cases(case_num),
-            emp_income DECIMAL(10,2) DEFAULT 0,
-            property_income DECIMAL(10,2) DEFAULT 0
-        )
-    ''')
-    
-    # Table-7: DC_CHILDRENS
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.dc_childrens (
-            child_id SERIAL PRIMARY KEY,
-            case_num INTEGER REFERENCES public.dc_cases(case_num),
-            children_dob DATE NOT NULL,
-            children_ssn VARCHAR(20)
-        )
-    ''')
-    
-    # Table-8: DC_EDUCATION
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.dc_education (
-            edu_id SERIAL PRIMARY KEY,
-            case_num INTEGER REFERENCES public.dc_cases(case_num),
-            highest_qualification VARCHAR(100),
-            graduation_year INTEGER
-        )
-    ''')
-    
-    # Table-9: ELIG_DTLS
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.elig_dtls (
-            elig_id SERIAL PRIMARY KEY,
-            case_num INTEGER REFERENCES public.dc_cases(case_num),
-            plan_name VARCHAR(100) NOT NULL,
-            plan_status VARCHAR(20) NOT NULL,
-            plan_start_date DATE,
-            plan_end_date DATE,
-            benefit_amt DECIMAL(10,2),
-            denial_reason VARCHAR(500),
-            create_date DATE DEFAULT CURRENT_DATE
-        )
-    ''')
-    
-    # Table-10: CO_TRIGGERS
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS public.co_triggers (
-            trigger_id SERIAL PRIMARY KEY,
-            case_num INTEGER REFERENCES public.dc_cases(case_num),
-            trg_status CHAR(1) DEFAULT 'P',
-            notice TEXT,
-            create_date DATE DEFAULT CURRENT_DATE,
-            update_date DATE
-        )
-    ''')
-    
-    conn.commit()
-    print("✅ All tables created in public schema")
-    
-    cur.close()
-    conn.close()
-    
-    # ================= INSERT DEFAULT DATA =================
-    
-    # Insert case workers
-    cur.execute("SELECT COUNT(*) FROM case_worker_accts")
-    worker_count = cur.fetchone()[0]
-    
-    if worker_count == 0:
-        cur.execute('''
-            INSERT INTO case_worker_accts 
-            (fullname, email, pwd, phno, gender, ssn, dob, created_by)
-            VALUES 
-            (%s, %s, %s, %s, %s, %s, %s, %s),
-            (%s, %s, %s, %s, %s, %s, %s, %s)
-        ''', (
-            'Admin User', 'admin@his.gov', 'admin123', '9876543210', 'M', '987654', '1990-01-01', 'SYSTEM',
-            'Case Worker 1', 'worker1@his.gov', 'worker123', '9876543211', 'F', '001003', '1992-05-15', 'SYSTEM'
-        ))
-        print("✅ Case workers added")
-    
-    # Insert plan categories
-    cur.execute("SELECT COUNT(*) FROM plan_category")
-    category_count = cur.fetchone()[0]
-    
-    if category_count == 0:
-        categories = ['SNAP', 'CCAP', 'Medicaid', 'Medicare', 'QHP']
-        for cat in categories:
-            cur.execute('''
-                INSERT INTO plan_category (category_name, created_by)
-                VALUES (%s, %s)
-            ''', (cat, 'SYSTEM'))
-        print("✅ Plan categories added")
-    
-    # Insert sample plans
-    cur.execute("SELECT COUNT(*) FROM plan_master")
-    plan_count = cur.fetchone()[0]
-    
-    if plan_count == 0:
-        # Get category IDs
-        cur.execute("SELECT category_id FROM plan_category WHERE category_name = 'SNAP'")
-        snap_id = cur.fetchone()
-        
-        cur.execute("SELECT category_id FROM plan_category WHERE category_name = 'Medicaid'")
-        medicaid_id = cur.fetchone()
-        
-        if snap_id:
-            cur.execute('''
-                INSERT INTO plan_master 
-                (plan_name, plan_start_date, plan_end_date, plan_category_id, created_by)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', ('SNAP Benefits', '2024-01-01', '2024-12-31', snap_id[0], 'SYSTEM'))
-        
-        if medicaid_id:
-            cur.execute('''
-                INSERT INTO plan_master 
-                (plan_name, plan_start_date, plan_end_date, plan_category_id, created_by)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', ('Medicaid Basic', '2024-01-01', '2024-12-31', medicaid_id[0], 'SYSTEM'))
-        print("✅ Sample plans added")
-    
-    # Insert sample citizen applications
-    cur.execute("SELECT COUNT(*) FROM citizen_apps")
-    citizen_count = cur.fetchone()[0]
-    
-    if citizen_count == 0:
-        citizens_data = [
-            ('Robert Brown', 'robert@email.com', '555-1234', '987-65-4321', 'M', 'New York'),
-            ('Alice Green', 'alice@email.com', '555-5678', '001-00-3003', 'F', 'Rhode Island'),
-            ('Mike Wilson', 'mike@email.com', '555-9012', '343-43-4343', 'M', 'California'),
-            ('Lisa Taylor', 'lisa@email.com', '555-3456', '268-30-2002', 'F', 'Ohio'),
-            ('David Miller', 'david@email.com', '555-7890', '135-15-8158', 'M', 'New Jersey')
-        ]
-        
-        for citizen in citizens_data:
-            cur.execute('''
-                INSERT INTO citizen_apps 
-                (fullname, email, phno, ssn, gender, state_name, create_date, created_by)
-                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, %s)
-            ''', (citizen[0], citizen[1], citizen[2], citizen[3], citizen[4], citizen[5], 'SYSTEM'))
-        print("✅ Sample citizens added")
-    
-    conn.commit()
-    
-    # Verify tables created
-    cur.execute("""
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public'
-        ORDER BY table_name;
-    """)
-    tables = cur.fetchall()
-    
-    print("\n" + "="*50)
-    print("📊 PostgreSQL Database Setup Complete!")
-    print("="*50)
-    print(f"✅ Total tables created: {len(tables)}")
-    for table in tables:
-        cur.execute(f"SELECT COUNT(*) FROM {table[0]}")
-        count = cur.fetchone()[0]
-        print(f"   - {table[0]}: {count} records")
-    print("="*50)
-    
-    cur.close()
-    conn.close()
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
 
 # ================= DATA COLLECTION MODULE APIS =================
 
@@ -766,69 +734,22 @@ def debug_all_tables():
     return jsonify(result)
 
 # ================= PUBLIC ROUTES =================
+# Force trailing slash and handle proxy
+@app.before_request
+def before_request():
+    if request.headers.get('X-Forwarded-Proto') == 'http':
+        return redirect(request.url.replace('http://', 'https://', 1))
 @app.route('/')
 def home():
     """Public landing page"""
     return render_template('public/home.html')
-
+@app.route('/create', methods=['GET', 'POST'])
+@app.route('/register', methods=['GET', 'POST'])
 @app.route('/public/register', methods=['GET', 'POST'])
 def citizen_register():
     if request.method == 'POST':
-        conn = get_db()
-        cur = conn.cursor()
-        
-        try:
-            # Server-side validation
-            fullname = request.form.get('fullname', '').strip()
-            email = request.form.get('email', '').strip()
-            phno = request.form.get('phno', '').strip()
-            ssn = request.form.get('ssn', '').strip()
-            gender = request.form.get('gender', '').strip()
-            state_name = request.form.get('state_name', 'New York').strip()
+        return redirect('/public/register')
 
-            def valid_email(e):
-                import re
-                return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", e)) if e else True
-
-            if not fullname:
-                flash('Full name is required', 'danger')
-                return redirect('/public/register')
-            if not ssn:
-                flash('SSN is required', 'danger')
-                return redirect('/public/register')
-            if email and not valid_email(email):
-                flash('Enter a valid email address', 'danger')
-                return redirect('/public/register')
-
-            cur.execute('''
-                INSERT INTO citizen_apps 
-                (fullname, email, phno, ssn, gender, state_name, create_date)
-                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE)
-                RETURNING app_id
-            ''', (
-                fullname,
-                email,
-                phno,
-                ssn,
-                gender,
-                state_name
-            ))
-            
-            app_id = cur.fetchone()[0]
-            conn.commit()
-            flash(f'✅ Application submitted! Your Application ID: {app_id}', 'success')
-            return redirect(f'/application/{app_id}/status')
-
-        except psycopg2.IntegrityError as e:
-            if 'ssn' in str(e).lower():
-                flash('❌ SSN already registered!', 'danger')
-            else:
-                flash('❌ Email already registered!', 'danger')
-        except Exception as e:
-            flash(f'❌ Error: {str(e)}', 'danger')
-        finally:
-            conn.close()
-    
     return render_template('public/register.html')
 
 @app.route('/application/<int:app_id>/status')
@@ -876,16 +797,23 @@ def check_status_page():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-        
+        if request.is_json:
+            data = request.get_json() or {}
+            username = data.get('username') or data.get('email') or ''
+            password = data.get('password') or ''
+        else:
+            username = request.form.get('username') or request.form.get('email') or ''
+            password = request.form.get('password') or ''
+
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM case_worker_accts WHERE email = %s AND pwd = %s', 
-                   (email, password))
+        cur.execute(
+            'SELECT * FROM case_worker_accts WHERE (email = %s OR fullname = %s) AND pwd = %s',
+            (username, username, password)
+        )
         row = cur.fetchone()
         conn.close()
-        
+
         if row:
             columns = [desc[0] for desc in cur.description]
             user = dict(zip(columns, row))
@@ -893,15 +821,244 @@ def login():
             session['user_name'] = user['fullname']
             session['user_email'] = user['email']
             session['user_role'] = 'ADMIN' if user['email'] == 'admin@his.gov' else 'CASEWORKER'
-            
+
+            if request.is_json:
+                return jsonify({
+                    'message': 'Login successful',
+                    'user_id': user['worker_id'],
+                    'username': user['fullname']
+                })
+
             if session['user_role'] == 'ADMIN':
                 return redirect('/admin/dashboard')
-            else:
-                return redirect('/caseworker/dashboard')
-        else:
-            flash('Invalid credentials!', 'danger')
-    
+            return redirect('/caseworker/dashboard')
+
+        if request.is_json:
+            return jsonify({'message': 'Invalid credentials'}), 401
+
+        flash('Invalid credentials!', 'danger')
+
     return render_template('auth/login.html')
+
+@app.route('/apply', methods=['POST'])
+def apply():
+    if request.is_json:
+        data = request.get_json() or {}
+        name = data.get('name', '').strip()
+        age = data.get('age')
+        income = data.get('income')
+        family_size = data.get('family_size')
+    else:
+        name = request.form.get('name', '').strip()
+        age = request.form.get('age')
+        income = request.form.get('income')
+        family_size = request.form.get('family_size')
+
+    if not name or age is None or income is None or family_size is None:
+        if request.is_json:
+            return jsonify({'message': 'Missing application fields'}), 400
+        flash('Please fill all required fields.', 'danger')
+        return redirect('/public/register')
+
+    try:
+        age = int(age)
+        family_size = int(family_size)
+        income = float(income)
+    except Exception:
+        if request.is_json:
+            return jsonify({'message': 'Invalid application values'}), 400
+        flash('Please enter valid numeric values.', 'danger')
+        return redirect('/public/register')
+
+    status, ai_reason = get_ai_recommendation(age, income, family_size)
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        INSERT INTO applications (name, age, income, family_size, status, ai_decision, ai_reason)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+    ''', (name, age, income, family_size, 'Pending', status, ai_reason))
+    app_id = cur.fetchone()[0]
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    if request.is_json:
+        return jsonify({
+            'message': 'Application submitted successfully',
+            'ai_decision': status,
+            'ai_reason': ai_reason,
+            'id': app_id
+        })
+
+    flash('Application submitted successfully!', 'success')
+    return redirect('/caseworker/dashboard')
+
+@app.route('/upload-document', methods=['POST'])
+def upload_document():
+    file = request.files.get('file')
+    name = request.form.get('name')
+
+    if not file:
+        return jsonify({'error': 'No file uploaded'}), 400
+    if not file.filename:
+        return jsonify({'error': 'Invalid file name'}), 400
+    if not name:
+        name = file.filename
+
+    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    try:
+        file.save(file_path)
+    except Exception as e:
+        return jsonify({'error': f'File save failed: {e}'}), 500
+
+    extracted_text = 'OCR failed or unsupported file format'
+    if Image is not None and pytesseract is not None:
+        try:
+            image = Image.open(file_path)
+            extracted_text = pytesseract.image_to_string(image)
+            if not extracted_text or extracted_text.strip() == '':
+                extracted_text = 'OCR completed but no text was found.'
+        except Exception:
+            extracted_text = 'OCR failed or unsupported file format'
+
+    ai_summary = analyze_document(extracted_text)
+
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute('''
+            INSERT INTO documents (name, file_path, extracted_text, ai_summary, status)
+            VALUES (%s, %s, %s, %s, %s)
+        ''', (name, file_path, extracted_text, ai_summary, 'Pending'))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': f'Document save failed: {e}'}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+    return jsonify({'message': 'Document uploaded successfully'})
+
+@app.route('/documents', methods=['GET'])
+def get_documents():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM documents ORDER BY id DESC')
+    rows = cur.fetchall()
+    result = []
+    for row in rows:
+        result.append({
+            'id': row[0],
+            'name': row[1],
+            'file_path': row[2],
+            'extracted_text': row[3],
+            'ai_summary': row[4],
+            'status': row[5],
+            'created_at': str(row[6])
+        })
+    cur.close()
+    conn.close()
+    return jsonify(result)
+
+@app.route('/applications', methods=['GET'])
+def get_applications():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT id, name, age, income, family_size, status, ai_decision, created_at, ai_reason
+        FROM applications
+        ORDER BY id DESC
+    ''')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    result = [
+        {
+            'id': row[0],
+            'name': row[1],
+            'age': row[2],
+            'income': float(row[3]),
+            'family_size': row[4],
+            'status': row[5],
+            'ai_decision': row[6],
+            'created_at': str(row[7]),
+            'ai_reason': row[8]
+        }
+        for row in rows
+    ]
+
+    return jsonify(result)
+
+@app.route('/pending-applications', methods=['GET'])
+def get_pending_applications():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT id, name, age, income, family_size, status, ai_decision, created_at, ai_reason
+        FROM applications
+        WHERE status = 'Pending'
+        ORDER BY id DESC
+    ''')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    result = [
+        {
+            'id': row[0],
+            'name': row[1],
+            'age': row[2],
+            'income': float(row[3]),
+            'family_size': row[4],
+            'status': row[5],
+            'ai_decision': row[6],
+            'created_at': str(row[7]),
+            'ai_reason': row[8]
+        }
+        for row in rows
+    ]
+
+    return jsonify(result)
+
+@app.route('/update-status', methods=['POST'])
+def update_status():
+    if request.is_json:
+        data = request.get_json() or {}
+        app_id = data.get('id')
+        status = data.get('status')
+    else:
+        app_id = request.form.get('id')
+        status = request.form.get('status')
+
+    if not app_id or not status:
+        return jsonify({'message': 'Missing id or status'}), 400
+
+    try:
+        app_id = int(app_id)
+    except Exception:
+        return jsonify({'message': 'Invalid application id'}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        cur.execute('UPDATE applications SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s', (status, app_id))
+        if cur.rowcount == 0:
+            conn.rollback()
+            return jsonify({'message': 'Application not found'}), 404
+
+        conn.commit()
+        return jsonify({'message': 'Application status updated successfully'})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'message': f'Application status update failed: {e}'}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 @app.route('/logout')
 def logout():
@@ -1361,7 +1518,12 @@ def debug_tables():
 
 # ================= INITIALIZATION =================
 print("Starting Health Insurance System...")
+try:
+    init_tables()
+except Exception as e:
+    print(f"Failed to initialize tables: {e}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
+
